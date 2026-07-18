@@ -20,10 +20,10 @@ const COLORS = {
     RED: '#ef4444',
     YELLOW: '#f59e0b',
     GREEN: '#10b981',
-    BLUE: '#3b82f6',
-    PURPLE: '#8b5cf6',
+    BLUE: '#38bdf8',
+    PURPLE: '#c084fc',
     GRID: 'rgba(255, 255, 255, 0.05)',
-    TEXT: '#9ca3af'
+    TEXT: '#94a3b8'
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -51,7 +51,6 @@ function updateDashboardUI(data) {
     document.getElementById('stat-red').querySelector('.stat-num').innerText = data.statistics.red;
     document.getElementById('stat-yellow').querySelector('.stat-num').innerText = data.statistics.yellow;
     document.getElementById('stat-green').querySelector('.stat-num').innerText = data.statistics.green;
-    document.getElementById('station-count').innerText = data.plants.length;
     
     // Sort plants: Red first, then Yellow, then Green, then alphabetically by name
     const sortedPlants = [...data.plants].sort((a, b) => {
@@ -68,7 +67,6 @@ function updateDashboardUI(data) {
         // Update markers if map already exists
         data.plants.forEach(plant => {
             if (mapMarkers[plant.id]) {
-                // Update popup info in case of new forecast readings
                 let popupText = `
                     <div class="leaflet-popup-title">${plant.name}</div>
                     <div class="leaflet-popup-desc">
@@ -88,11 +86,10 @@ function updateDashboardUI(data) {
     // Setup Search
     setupSearch(sortedPlants);
     
-    // Set initial selection if none is selected
+    // Auto-select first active alert if no selection has been made yet
     if (!currentSelectedPlant) {
         const initialSelection = sortedPlants.find(p => p.alert_level === 'RED') || 
-                                  sortedPlants.find(p => p.alert_level === 'YELLOW') || 
-                                  sortedPlants[0];
+                                  sortedPlants.find(p => p.alert_level === 'YELLOW');
         if (initialSelection) {
             selectPlant(initialSelection.id);
         }
@@ -102,31 +99,25 @@ function updateDashboardUI(data) {
 // Dynamic polling to check for data updates without page refresh
 function startAutoPolling() {
     setInterval(() => {
-        console.log("Checking for background forecast updates...");
-        
-        // Remove old script tag to prevent piling
         const oldScript = document.querySelector('script[src^="forecast_data.js"]');
         if (oldScript) {
             oldScript.remove();
         }
         
-        // Append a new script tag with cache buster
         const newScript = document.createElement('script');
         newScript.src = `forecast_data.js?t=${new Date().getTime()}`;
         newScript.onload = () => {
             const data = window.FORECAST_DATA;
             if (data) {
-                // Check if data timestamp has actually changed
                 const currentTimestamp = document.getElementById('update-timestamp').innerText;
                 if (data.generated_at !== currentTimestamp) {
                     console.log("New forecast data detected! Re-rendering dashboard...");
                     updateDashboardUI(data);
                     
-                    // Update active selected plant parameters
                     if (currentSelectedPlant) {
                         const updatedSelected = data.plants.find(p => p.id === currentSelectedPlant.id);
                         if (updatedSelected) {
-                            selectPlant(updatedSelected.id, false); // select without panning map again
+                            selectPlant(updatedSelected.id, false); // select without panning map
                         }
                     }
                 }
@@ -138,13 +129,13 @@ function startAutoPolling() {
 
 // Map Initialization
 function initMap(plants) {
-    // Center map roughly over northern India where most NHPC hydro stations are located
+    // Center map roughly over northern India
     map = L.map('map', {
-        zoomControl: false
-    }).setView([29.0, 79.0], 5);
+        zoomControl: false,
+        attributionControl: true
+    }).setView([29.0, 80.0], 5);
     
-    // Add custom zoom control position
-    L.control.zoom({ position: 'topright' }).addTo(map);
+    L.control.zoom({ position: 'bottomleft' }).addTo(map);
     
     // Dark mode maps: CartoDB Dark Matter
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -159,7 +150,6 @@ function initMap(plants) {
         const lon = plant.lon;
         const status = plant.alert_level;
         
-        // Custom HTML marker using L.divIcon for pulsing effect
         const pulseHtml = `
             <div class="custom-marker">
                 <div class="marker-pulse ${status.toLowerCase()}"></div>
@@ -176,7 +166,6 @@ function initMap(plants) {
         
         const marker = L.marker([lat, lon], { icon: customIcon }).addTo(map);
         
-        // Construct popup text
         let popupText = `
             <div class="leaflet-popup-title">${plant.name}</div>
             <div class="leaflet-popup-desc">
@@ -213,7 +202,7 @@ function highlightCatchmentBoundaries(plant, isSelected = false) {
     if (mapPolygons[plant.id]) {
         if (isSelected) {
             mapPolygons[plant.id].forEach(p => {
-                p.setStyle({ weight: 3, fillOpacity: 0.25 });
+                p.setStyle({ weight: 3.5, fillOpacity: 0.25 });
             });
         }
         return;
@@ -228,7 +217,7 @@ function highlightCatchmentBoundaries(plant, isSelected = false) {
     plant.boundaries.forEach(coords => {
         const poly = L.polygon(coords, {
             color: color,
-            weight: isSelected ? 3 : 1.5,
+            weight: isSelected ? 3.5 : 1.5,
             fillColor: color,
             fillOpacity: isSelected ? 0.25 : 0.08,
             dashArray: isSelected ? '' : '3, 5'
@@ -269,7 +258,6 @@ function populateStationList(plants) {
         li.id = `station-item-${plant.id}`;
         li.setAttribute('data-name', plant.name.toLowerCase());
         
-        // Active class recovery
         if (currentSelectedPlant && currentSelectedPlant.id === plant.id) {
             li.classList.add('active');
         }
@@ -290,8 +278,6 @@ function populateStationList(plants) {
 // Search Filter Input Setup
 function setupSearch(plants) {
     const searchInput = document.getElementById('station-search');
-    
-    // Detach old listeners
     const newSearchInput = searchInput.cloneNode(true);
     searchInput.parentNode.replaceChild(newSearchInput, searchInput);
     
@@ -325,60 +311,108 @@ function selectPlant(plantId, panMap = true) {
     const selectedItem = document.getElementById(`station-item-${plantId}`);
     if (selectedItem) {
         selectedItem.classList.add('active');
+        selectedItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
     
     // 2. Clear other map polygons and highlight selected one
     clearInactivePolygons();
     highlightCatchmentBoundaries(plant, true);
     
-    // 3. Pan map if requested
+    // 3. Pan map left-offset to shift marker out from under the details slide sheet
     if (panMap && map) {
-        map.setView([plant.lat, plant.lon], 7, { animate: true, duration: 0.8 });
+        // Shift map view slightly left-center by panning left (-200 pixels) after centering
+        map.setView([plant.lat, plant.lon], 7, { animate: true });
+        
+        const isCollapsed = document.getElementById('sidebar').classList.contains('collapsed');
+        const offsetPx = isCollapsed ? -220 : -140; // dynamically offset based on sidebar state
+        
+        // Wait for zoom/pan animation to complete, then apply offset pan
+        map.once('moveend', () => {
+            map.panBy([offsetPx, 0], { animate: true, duration: 0.6 });
+        });
+        
         if (mapMarkers[plantId]) {
             mapMarkers[plantId].openPopup();
         }
     }
     
-    // 4. Update Details Dashboard Content
-    document.getElementById('no-selection').classList.add('hidden');
-    document.getElementById('active-dashboard').classList.remove('hidden');
+    // 4. Slide-in Dashboard Sheet
+    const dashboard = document.getElementById('dashboard-details');
+    dashboard.classList.add('active');
     
+    // 5. Update content
     document.getElementById('selected-plant-name').innerText = plant.name;
     document.getElementById('selected-lat').innerText = plant.lat.toFixed(4);
     document.getElementById('selected-lon').innerText = plant.lon.toFixed(4);
     
-    // Metrics updates
     document.getElementById('val-rain-24h').innerText = `${plant.summary.rain_24h || 0.0} mm`;
     document.getElementById('val-rain-72h').innerText = `${plant.summary.rain_72h || 0.0} mm`;
-    document.getElementById('val-temp-range').innerText = `${plant.summary.min_temp || 0}° - ${plant.summary.max_temp || 0}°C`;
+    document.getElementById('val-temp-range').innerText = `${plant.summary.min_temp || 0}°-${plant.summary.max_temp || 0}°C`;
     document.getElementById('val-wind-gust').innerText = `${plant.summary.max_gust || 0.0} m/s`;
     
-    // Update Warnings and Alarm sound triggers
     updateDashboardWarningUI(plant);
-    
-    // Redraw charts
     drawForecastChart();
     
-    // Re-trigger Lucide Icons inside dynamic content
     lucide.createIcons();
 }
 
-// Update Warning Banner, flasher style, and audio siren
+// Close/Dismiss details panel
+function closeDashboard() {
+    const dashboard = document.getElementById('dashboard-details');
+    dashboard.classList.remove('active');
+    
+    // Deselect active list item
+    document.querySelectorAll('.station-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    
+    // Clear boundaries and silence alarms
+    if (currentSelectedPlant) {
+        removePolygon(currentSelectedPlant.id);
+    }
+    currentSelectedPlant = null;
+    stopSirenSound();
+    
+    // Re-center map generally
+    if (map) {
+        map.setView([29.0, 80.0], 5, { animate: true });
+    }
+}
+
+// Toggle Sidebar slide
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const toggleIcon = document.getElementById('sidebar-toggle-icon');
+    const openBtn = document.getElementById('open-sidebar-btn');
+    
+    sidebar.classList.toggle('collapsed');
+    
+    if (sidebar.classList.contains('collapsed')) {
+        openBtn.classList.remove('hidden');
+    } else {
+        openBtn.classList.add('hidden');
+    }
+    
+    // Pan map to compensate for new visible area space
+    if (map && currentSelectedPlant) {
+        const offsetPx = sidebar.classList.contains('collapsed') ? -80 : 80;
+        map.panBy([offsetPx, 0], { animate: true, duration: 0.5 });
+    }
+}
+
+// Update Warning states
 function updateDashboardWarningUI(plant) {
     const detailsContainer = document.getElementById('dashboard-details');
     const statusBanner = document.getElementById('status-banner');
     const statusText = document.getElementById('status-text');
     const statusIcon = document.getElementById('status-icon');
     
-    // Reset flashing alert classes
     detailsContainer.classList.remove('flashing-red', 'flashing-yellow');
     
-    // Status banner update
     statusBanner.className = 'alert-status-banner ' + plant.alert_level.toLowerCase();
-    statusText.innerText = plant.alert_level === 'GREEN' ? 'SAFE STATUS' : (plant.alert_level === 'YELLOW' ? 'YELLOW WATCH' : 'RED WARNING ALERT');
+    statusText.innerText = plant.alert_level === 'GREEN' ? 'SAFE STATUS' : (plant.alert_level === 'YELLOW' ? 'WATCH ACTIVE' : 'CRITICAL ALERT');
     statusIcon.setAttribute('data-lucide', plant.alert_level === 'GREEN' ? 'check-circle' : 'alert-triangle');
     
-    // Warning Callout Box (heavy rainfall details)
     const callout = document.getElementById('warning-callout');
     const warningList = document.getElementById('warning-reasons-list');
     warningList.innerHTML = '';
@@ -392,18 +426,15 @@ function updateDashboardWarningUI(plant) {
             warningList.appendChild(li);
         });
         
-        // Add flashing effect
         if (plant.alert_level === 'RED') {
             detailsContainer.classList.add('flashing-red');
         } else if (plant.alert_level === 'YELLOW') {
             detailsContainer.classList.add('flashing-yellow');
         }
         
-        // Fire Audio Alarm!
         startSirenSound();
     } else {
         callout.classList.add('hidden');
-        // Stop Audio Alarm!
         stopSirenSound();
     }
 }
@@ -418,26 +449,25 @@ function initAudio() {
 function startSirenSound() {
     if (isSirenMuted) return;
     initAudio();
-    if (sirenOscillator) return; // Already running
+    if (sirenOscillator) return;
     
     sirenOscillator = audioCtx.createOscillator();
     sirenGain = audioCtx.createGain();
     
     sirenOscillator.type = 'sawtooth';
-    sirenOscillator.frequency.setValueAtTime(440, audioCtx.currentTime); // Standard pitch
+    sirenOscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
     
-    sirenGain.gain.setValueAtTime(0.08, audioCtx.currentTime); // Low moderate volume
+    sirenGain.gain.setValueAtTime(0.06, audioCtx.currentTime); // Subtle volume
     
     sirenOscillator.connect(sirenGain);
     sirenGain.connect(audioCtx.destination);
     
     sirenOscillator.start();
     
-    // Oscillate pitch between 350Hz and 650Hz every 0.4 seconds to create a wailing siren
     let highPitch = true;
     sirenInterval = setInterval(() => {
         if (!audioCtx || !sirenOscillator) return;
-        const targetFreq = highPitch ? 650 : 350;
+        const targetFreq = highPitch ? 600 : 380;
         sirenOscillator.frequency.exponentialRampToValueAtTime(targetFreq, audioCtx.currentTime + 0.35);
         highPitch = !highPitch;
     }, 400);
@@ -472,20 +502,18 @@ function toggleSirenMute() {
     
     if (isSirenMuted) {
         btn.classList.add('muted');
-        text.innerText = 'Siren Muted';
+        text.innerText = 'Mute';
         icon.setAttribute('data-lucide', 'volume-x');
         stopSirenSound();
     } else {
-        // Safari and Chrome require user gestures to resume Audio Context
         if (audioCtx && audioCtx.state === 'suspended') {
             audioCtx.resume();
         }
         
         btn.classList.remove('muted');
-        text.innerText = 'Siren Enabled';
+        text.innerText = 'Siren';
         icon.setAttribute('data-lucide', 'volume-2');
         
-        // Trigger sound if active plant is currently on RED/YELLOW alert
         if (currentSelectedPlant && (currentSelectedPlant.alert_level === 'RED' || currentSelectedPlant.alert_level === 'YELLOW')) {
             startSirenSound();
         }
@@ -544,7 +572,7 @@ function drawForecastChart() {
                 grid: { color: COLORS.GRID },
                 ticks: {
                     color: COLORS.TEXT,
-                    font: { family: 'Outfit', size: 10 },
+                    font: { family: 'Outfit', size: 9 },
                     maxTicksLimit: 12
                 }
             },
@@ -552,24 +580,26 @@ function drawForecastChart() {
                 grid: { color: COLORS.GRID },
                 ticks: {
                     color: COLORS.TEXT,
-                    font: { family: 'Outfit', size: 11 }
+                    font: { family: 'Outfit', size: 10 }
                 }
             }
         },
         plugins: {
             legend: {
                 labels: {
-                    color: '#f3f4f6',
-                    font: { family: 'Outfit', size: 12, weight: '500' }
+                    color: '#f8fafc',
+                    font: { family: 'Outfit', size: 11, weight: '500' },
+                    boxWidth: 10,
+                    padding: 8
                 }
             },
             tooltip: {
-                backgroundColor: 'rgba(13, 19, 33, 0.95)',
-                titleFont: { family: 'Outfit', size: 12, weight: 'bold' },
-                bodyFont: { family: 'Outfit', size: 12 },
+                backgroundColor: 'rgba(10, 15, 26, 0.95)',
+                titleFont: { family: 'Outfit', size: 11, weight: 'bold' },
+                bodyFont: { family: 'Outfit', size: 11 },
                 borderColor: COLORS.GRID,
                 borderWidth: 1,
-                padding: 10
+                padding: 8
             }
         }
     };
@@ -580,20 +610,20 @@ function drawForecastChart() {
                 label: 'Temperature (°C)',
                 data: forecast.temp,
                 borderColor: COLORS.YELLOW,
-                backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                borderWidth: 3,
+                backgroundColor: 'rgba(245, 158, 11, 0.05)',
+                borderWidth: 2.5,
                 fill: true,
-                tension: 0.3,
+                tension: 0.35,
                 yAxisID: 'y'
             },
             {
-                label: 'Relative Humidity (%)',
+                label: 'Humidity (%)',
                 data: forecast.rh,
                 borderColor: COLORS.BLUE,
-                backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                backgroundColor: 'rgba(56, 189, 248, 0.02)',
                 borderWidth: 2,
                 fill: false,
-                tension: 0.3,
+                tension: 0.35,
                 yAxisID: 'y1'
             }
         ];
@@ -603,7 +633,7 @@ function drawForecastChart() {
             grid: { drawOnChartArea: false },
             ticks: {
                 color: COLORS.TEXT,
-                font: { family: 'Outfit', size: 11 }
+                font: { family: 'Outfit', size: 10 }
             },
             min: 0,
             max: 100
@@ -611,11 +641,11 @@ function drawForecastChart() {
     } else {
         datasets = [
             {
-                label: '3h Rainfall (mm)',
+                label: 'Precipitation (mm)',
                 data: forecast.rain,
                 borderColor: COLORS.BLUE,
-                backgroundColor: 'rgba(59, 130, 246, 0.45)',
-                borderWidth: 1.5,
+                backgroundColor: 'rgba(56, 189, 248, 0.4)',
+                borderWidth: 1,
                 type: 'bar',
                 yAxisID: 'y'
             },
@@ -625,7 +655,7 @@ function drawForecastChart() {
                 borderColor: COLORS.GREEN,
                 borderWidth: 2,
                 fill: false,
-                tension: 0.3,
+                tension: 0.35,
                 yAxisID: 'y1'
             },
             {
@@ -633,9 +663,9 @@ function drawForecastChart() {
                 data: forecast.wind_gust,
                 borderColor: COLORS.RED,
                 borderWidth: 1.5,
-                borderDash: [4, 4],
+                borderDash: [3, 3],
                 fill: false,
-                tension: 0.3,
+                tension: 0.35,
                 yAxisID: 'y1'
             }
         ];
@@ -645,7 +675,7 @@ function drawForecastChart() {
             grid: { drawOnChartArea: false },
             ticks: {
                 color: COLORS.TEXT,
-                font: { family: 'Outfit', size: 11 }
+                font: { family: 'Outfit', size: 10 }
             }
         };
     }

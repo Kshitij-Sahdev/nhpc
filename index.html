@@ -28,48 +28,54 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body class="dark-theme">
-    <div class="app-container">
+    
+    <!-- Fullscreen Map Background -->
+    <div id="map"></div>
+    
+    <div class="app-overlay">
         
-        <!-- Sidebar -->
-        <aside class="sidebar">
+        <!-- Sidebar - Floating Left -->
+        <aside class="sidebar" id="sidebar">
             <header class="sidebar-header">
                 <div class="logo-container">
                     <i data-lucide="shield-alert" class="logo-icon alert-red-text animate-pulse"></i>
                     <div class="logo-text">
                         <h1>NHPC Warning</h1>
-                        <span class="sub-title">Weather Forecast & Warning System</span>
+                        <span class="sub-title">Live Weather Risk Control</span>
                     </div>
                 </div>
+                <button class="icon-btn toggle-sidebar-btn" onclick="toggleSidebar()" title="Collapse Sidebar">
+                    <i data-lucide="chevron-left" id="sidebar-toggle-icon"></i>
+                </button>
             </header>
             
-            <!-- Statistics Panel -->
-            <section class="stats-panel">
-                <div class="stat-card red" id="stat-red">
+            <!-- Statistics Horizontal Bar -->
+            <section class="stats-bar">
+                <div class="stat-pill red" id="stat-red" title="Critical warning active">
+                    <span class="dot"></span>
                     <span class="stat-num">0</span>
-                    <span class="stat-label">RED ALERTS</span>
+                    <span class="stat-label">Alerts</span>
                 </div>
-                <div class="stat-card yellow" id="stat-yellow">
+                <div class="stat-pill yellow" id="stat-yellow" title="Watch active">
+                    <span class="dot"></span>
                     <span class="stat-num">0</span>
-                    <span class="stat-label">WATCHES</span>
+                    <span class="stat-label">Watches</span>
                 </div>
-                <div class="stat-card green" id="stat-green">
+                <div class="stat-pill green" id="stat-green" title="Safe stations">
+                    <span class="dot"></span>
                     <span class="stat-num">0</span>
-                    <span class="stat-label">SAFE</span>
+                    <span class="stat-label">Safe</span>
                 </div>
             </section>
             
-            <!-- Search & Filter -->
+            <!-- Search Input -->
             <div class="search-container">
                 <i data-lucide="search" class="search-icon"></i>
-                <input type="text" id="station-search" placeholder="Search power plants...">
+                <input type="text" id="station-search" placeholder="Search catchments...">
             </div>
             
             <!-- Station List -->
             <div class="station-list-container">
-                <div class="list-header">
-                    <h2>Power Plants / Catchments</h2>
-                    <span class="count-badge" id="station-count">0</span>
-                </div>
                 <ul class="station-list" id="station-list">
                     <!-- Dynamic station items inserted here -->
                 </ul>
@@ -84,112 +90,102 @@
             </footer>
         </aside>
         
-        <!-- Main Content Area -->
-        <main class="main-content">
+        <!-- Sidebar Re-open Button (Hidden when sidebar is open) -->
+        <button class="floating-btn open-sidebar-btn hidden" id="open-sidebar-btn" onclick="toggleSidebar()" title="Show Sidebar">
+            <i data-lucide="menu"></i>
+        </button>
+        
+        <!-- Details Dashboard - Floating Right (Sliding Panel) -->
+        <section class="dashboard-details" id="dashboard-details">
             
-            <!-- Top Map Panel -->
-            <section class="map-section">
-                <div id="map"></div>
-                <div class="map-overlay-info">
-                    <div class="overlay-title">NHPC National Catchment Grid</div>
-                    <div class="overlay-coords">Interactive Leaflet Geo-Map</div>
-                </div>
-            </section>
+            <!-- Close Button for Mobile/Widescreen dismissal -->
+            <button class="icon-btn close-dashboard-btn" onclick="closeDashboard()" title="Close Details">
+                <i data-lucide="x"></i>
+            </button>
             
-            <!-- Bottom Details Dashboard -->
-            <section class="dashboard-details" id="dashboard-details">
+            <!-- Main Dashboard Content -->
+            <div class="active-dashboard" id="active-dashboard">
                 
-                <!-- Welcome/No-Selection State -->
-                <div class="no-selection" id="no-selection">
-                    <i data-lucide="waves" class="pulse-icon"></i>
-                    <h3>Select a Hydro Power Plant</h3>
-                    <p>Click on any power plant in the sidebar list or on the map to load its detailed 5-day weather forecast, active warning states, and interactive precipitation and wind charts.</p>
+                <!-- Station Header -->
+                <header class="dashboard-header">
+                    <div class="station-info">
+                        <h2 id="selected-plant-name">Tanakpur</h2>
+                        <div class="coords-badge">
+                            <i data-lucide="map-pin"></i>
+                            <span>Lat: <strong id="selected-lat">0.00</strong>, Lon: <strong id="selected-lon">0.00</strong></span>
+                        </div>
+                    </div>
+                    <div class="header-controls">
+                        <button id="siren-toggle" class="control-btn muted" onclick="toggleSirenMute()">
+                            <i data-lucide="volume-x" id="siren-icon"></i>
+                            <span id="siren-text">Mute</span>
+                        </button>
+                        <div class="alert-status-banner" id="status-banner">
+                            <i data-lucide="info" id="status-icon"></i>
+                            <span id="status-text">SAFE</span>
+                        </div>
+                    </div>
+                </header>
+                
+                <!-- Warning Details Banner (if active) -->
+                <div class="warning-callout hidden" id="warning-callout">
+                    <div class="callout-header">
+                        <i data-lucide="alert-triangle"></i>
+                        <h4>Active Hazards Detected</h4>
+                    </div>
+                    <ul id="warning-reasons-list">
+                        <!-- Warning text points -->
+                    </ul>
                 </div>
                 
-                <!-- Main Dashboard (Hidden by default, shown on select) -->
-                <div class="active-dashboard hidden" id="active-dashboard">
-                    
-                    <!-- Station Header -->
-                    <header class="dashboard-header">
-                        <div class="station-info">
-                            <h2 id="selected-plant-name">Tanakpur</h2>
-                            <div class="coords-badge">
-                                <i data-lucide="map-pin"></i>
-                                <span>Lat: <strong id="selected-lat">0.00</strong>, Lon: <strong id="selected-lon">0.00</strong></span>
-                            </div>
-                        </div>
-                        <div class="header-controls">
-                            <button id="siren-toggle" class="control-btn muted" onclick="toggleSirenMute()">
-                                <i data-lucide="volume-x" id="siren-icon"></i>
-                                <span id="siren-text">Siren Muted</span>
-                            </button>
-                            <div class="alert-status-banner" id="status-banner">
-                                <i data-lucide="info" id="status-icon"></i>
-                                <span id="status-text">SAFE</span>
-                            </div>
-                        </div>
-                    </header>
-                    
-                    <!-- Warning Details Banner (if active) -->
-                    <div class="warning-callout hidden" id="warning-callout">
-                        <div class="callout-header">
-                            <i data-lucide="alert-triangle"></i>
-                            <h4>Active Hazards Detected</h4>
-                        </div>
-                        <ul id="warning-reasons-list">
-                            <!-- Warning text points -->
-                        </ul>
-                    </div>
-                    
-                    <!-- Grid of Summary Cards -->
-                    <div class="metrics-grid">
-                        <div class="metric-card">
-                            <div class="metric-icon bg-blue"><i data-lucide="cloud-rain"></i></div>
-                            <div class="metric-data">
-                                <span class="metric-value" id="val-rain-24h">0.0 mm</span>
-                                <span class="metric-label">24h Cum. Rain</span>
-                            </div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-icon bg-orange"><i data-lucide="thermometer"></i></div>
-                            <div class="metric-data">
-                                <span class="metric-value" id="val-temp-range">0 - 0 °C</span>
-                                <span class="metric-label">Temp Range</span>
-                            </div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-icon bg-purple"><i data-lucide="wind"></i></div>
-                            <div class="metric-data">
-                                <span class="metric-value" id="val-wind-gust">0.0 m/s</span>
-                                <span class="metric-label">Max Wind Gust</span>
-                            </div>
-                        </div>
-                        <div class="metric-card">
-                            <div class="metric-icon bg-green"><i data-lucide="cloud"></i></div>
-                            <div class="metric-data">
-                                <span class="metric-value" id="val-rain-72h">0.0 mm</span>
-                                <span class="metric-label">72h Cum. Rain</span>
-                            </div>
+                <!-- Grid of Summary Cards -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-icon bg-blue"><i data-lucide="cloud-rain"></i></div>
+                        <div class="metric-data">
+                            <span class="metric-value" id="val-rain-24h">0.0 mm</span>
+                            <span class="metric-label">24h Rain</span>
                         </div>
                     </div>
-                    
-                    <!-- Forecast Charts Section -->
-                    <div class="charts-container">
-                        <div class="chart-header">
-                            <h3>5-Day weather Forecast (3-Hour Intervals)</h3>
-                            <div class="chart-tabs">
-                                <button class="tab-btn active" id="tab-temp" onclick="switchTab('temp-tab')">Temperature & RH</button>
-                                <button class="tab-btn" id="tab-rain" onclick="switchTab('rain-tab')">Rainfall & Wind Speed</button>
-                            </div>
-                        </div>
-                        <div class="chart-body">
-                            <canvas id="forecastChart" width="800" height="230"></canvas>
+                    <div class="metric-card">
+                        <div class="metric-icon bg-orange"><i data-lucide="thermometer"></i></div>
+                        <div class="metric-data">
+                            <span class="metric-value" id="val-temp-range">0-0 °C</span>
+                            <span class="metric-label">Temp Range</span>
                         </div>
                     </div>
-                    
+                    <div class="metric-card">
+                        <div class="metric-icon bg-purple"><i data-lucide="wind"></i></div>
+                        <div class="metric-data">
+                            <span class="metric-value" id="val-wind-gust">0.0 m/s</span>
+                            <span class="metric-label">Wind Gust</span>
+                        </div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-icon bg-green"><i data-lucide="cloud"></i></div>
+                        <div class="metric-data">
+                            <span class="metric-value" id="val-rain-72h">0.0 mm</span>
+                            <span class="metric-label">72h Rain</span>
+                        </div>
+                    </div>
                 </div>
-            </section>
-        </main>
+                
+                <!-- Forecast Charts Section -->
+                <div class="charts-container">
+                    <div class="chart-header">
+                        <h3>5-Day Forecast Trends</h3>
+                        <div class="chart-tabs">
+                            <button class="tab-btn active" id="tab-temp" onclick="switchTab('temp-tab')">Temp & RH</button>
+                            <button class="tab-btn" id="tab-rain" onclick="switchTab('rain-tab')">Rain & Wind</button>
+                        </div>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="forecastChart"></canvas>
+                    </div>
+                </div>
+                
+            </div>
+        </section>
     </div>
 
     <!-- Load Local Forecast Data -->
