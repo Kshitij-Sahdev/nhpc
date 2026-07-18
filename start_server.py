@@ -8,11 +8,12 @@ import os
 
 PORT = 8000
 WORKSPACE_DIR = os.path.dirname(os.path.abspath(__file__))
+WEB_DIR = os.path.join(WORKSPACE_DIR, "web")
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        # Serve from the workspace directory where index.html is located
-        super().__init__(*args, directory=WORKSPACE_DIR, **kwargs)
+        # Serve from the web subfolder
+        super().__init__(*args, directory=WEB_DIR, **kwargs)
 
 def run_server():
     socketserver.TCPServer.allow_reuse_address = True
@@ -22,7 +23,7 @@ def run_server():
             print(f"  NHPC Weather Warning Dashboard local Web Server      ")
             print(f"=======================================================")
             print(f"  Serving files at: http://localhost:{PORT}/index.html")
-            print(f"  Directory: {WORKSPACE_DIR}")
+            print(f"  Directory: {WEB_DIR}")
             print(f"  Press Ctrl+C to stop the server.")
             print(f"=======================================================\n")
             httpd.serve_forever()

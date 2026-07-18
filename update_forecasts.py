@@ -404,11 +404,15 @@ def send_email_alert(plant_name, old_status, new_status, reasons):
 # --- MAIN RUNNER ---
 def main():
     workspace_dir = r"d:\bht bhayankar codin\nhpc"
+    web_dir = os.path.join(workspace_dir, "web")
+    os.makedirs(web_dir, exist_ok=True)
     kml_path = os.path.join(workspace_dir, "Catchment_NHPC.KML")
     summary_txt_path = os.path.join(workspace_dir, "weather_forecast_summary.txt")
-    js_data_path = os.path.join(workspace_dir, "forecast_data.js")
-    json_data_path = os.path.join(workspace_dir, "forecasts.json")
-    state_path = os.path.join(workspace_dir, "alert_state.json")
+    js_data_path = os.path.join(web_dir, "forecast_data.js")
+    json_data_path = os.path.join(web_dir, "forecasts.json")
+    data_dir = os.path.join(workspace_dir, "data")
+    os.makedirs(data_dir, exist_ok=True)
+    state_path = os.path.join(data_dir, "alert_state.json")
     
     if not os.path.exists(kml_path):
         print(f"Error: KML file not found at {kml_path}")

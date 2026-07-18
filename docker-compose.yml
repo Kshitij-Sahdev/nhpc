@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  nhpc-dashboard:
+    build: .
+    container_name: nhpc-dashboard
+    ports:
+      - "80:80"
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      # Persists the state transition database so updates aren't lost on restart
+      - nhpc_state_volume:/app/data
+
+volumes:
+  nhpc_state_volume:
