@@ -71,14 +71,35 @@
             <!-- Search Input -->
             <div class="search-container">
                 <i data-lucide="search" class="search-icon"></i>
-                <input type="text" id="station-search" placeholder="Search catchments...">
+                <input type="text" id="station-search" placeholder="Search catchments or enter lat, lon...">
+                <button class="clear-search-btn hidden" id="clear-search-btn" title="Clear Search">
+                    <i data-lucide="x"></i>
+                </button>
+                <div class="search-suggestions hidden" id="search-suggestions">
+                    <!-- Dynamic suggestion items inserted here -->
+                </div>
             </div>
             
             <!-- Station List -->
             <div class="station-list-container">
-                <ul class="station-list" id="station-list">
-                    <!-- Dynamic station items inserted here -->
-                </ul>
+                <!-- Custom/Searched Locations Section -->
+                <div class="station-group hidden" id="custom-stations-group">
+                    <h3 class="group-header">
+                        <span>Searched Locations</span>
+                        <button class="clear-custom-btn" id="clear-custom-btn" title="Clear all custom locations">Clear All</button>
+                    </h3>
+                    <ul class="station-list" id="custom-station-list">
+                        <!-- Dynamic custom stations inserted here -->
+                    </ul>
+                </div>
+                
+                <!-- Official NHPC Catchments Section -->
+                <div class="station-group" id="official-stations-group">
+                    <h3 class="group-header">Official Catchments</h3>
+                    <ul class="station-list" id="station-list">
+                        <!-- Dynamic station items inserted here -->
+                    </ul>
+                </div>
             </div>
             
             <!-- Footer -->

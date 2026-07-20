@@ -246,6 +246,193 @@ body {
     box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
 }
 
+/* Group headings inside sidebar */
+.station-group {
+    margin-bottom: 18px;
+}
+
+.group-header {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    padding: 6px 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.clear-custom-btn {
+    background: transparent;
+    border: none;
+    color: var(--color-red);
+    font-size: 0.65rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: normal;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.clear-custom-btn:hover {
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* Clear search button in input */
+.clear-search-btn {
+    position: absolute;
+    right: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+
+.clear-search-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.clear-search-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Search Suggestions dropdown list */
+.search-suggestions {
+    position: absolute;
+    top: calc(100% - 6px);
+    left: 20px;
+    right: 20px;
+    background: rgba(8, 12, 24, 0.95);
+    backdrop-filter: blur(25px);
+    -webkit-backdrop-filter: blur(25px);
+    border: 1px solid var(--border-color-glow);
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    padding: 6px;
+}
+
+.search-suggestions::-webkit-scrollbar {
+    width: 4px;
+}
+
+.search-suggestions::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.search-suggestions::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 2px;
+}
+
+.suggestion-item {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s var(--ease-apple);
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.suggestion-item:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+}
+
+.suggestion-item svg {
+    width: 14px;
+    height: 14px;
+    color: var(--color-blue);
+    flex-shrink: 0;
+}
+
+.suggestion-item.loading {
+    justify-content: center;
+    color: var(--text-muted);
+    cursor: default;
+    font-style: italic;
+}
+
+.suggestion-item.loading:hover {
+    background-color: transparent;
+}
+
+.suggestion-item.loading svg {
+    animation: spin 1s linear infinite;
+    color: var(--text-muted);
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.suggestion-item .suggestion-details {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    width: 100%;
+}
+
+.suggestion-item .suggestion-name {
+    font-weight: 600;
+}
+
+.suggestion-item .suggestion-sub {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+}
+
+/* Custom plant item extensions */
+.station-item .station-delete-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: all 0.2s;
+    margin-left: 8px;
+}
+
+.station-item:hover .station-delete-btn {
+    opacity: 1;
+}
+
+.station-item .station-delete-btn:hover {
+    color: var(--color-red);
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+.station-item .station-delete-btn svg {
+    width: 12px;
+    height: 12px;
+}
+
 /* Station list */
 .station-list-container {
     flex: 1;
