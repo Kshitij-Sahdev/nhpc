@@ -170,12 +170,42 @@ def parse_kml(kml_path):
     return power_plants
 
 def analyze_forecast(forecast_data, start_time_ist):
-    rain_list = [safe_float(r) for r in forecast_data.get("apcp", [])]
-    temp_list = [safe_float(t) for t in forecast_data.get("temp", [])]
-    wind_list = [safe_float(w) for w in forecast_data.get("wspd", [])]
-    gust_list = [safe_float(g) for g in forecast_data.get("gust", [])]
-    rh_list = [safe_float(h) for h in forecast_data.get("rh", [])]
-    cloud_list = [safe_float(c) for c in forecast_data.get("tcdc", [])]
+    def safe_float_or_none(val, treat_zero_as_none=False):
+        if val is None or val == 'NaN' or val == 'nan' or str(val).strip().lower() in ['nan', 'null', 'none', '']:
+            return None
+        try:
+            f = float(val)
+            if treat_zero_as_none and f == 0.0:
+                return None
+            return f
+        except (ValueError, TypeError):
+            return None
+
+    def fill_none_list(raw_list, default_val=0.0):
+        filled = []
+        first_valid = None
+        for val in raw_list:
+            if val is not None:
+                first_valid = val
+                break
+        if first_valid is None:
+            first_valid = default_val
+            
+        last_valid = None
+        for val in raw_list:
+            if val is None:
+                filled.append(last_valid if last_valid is not None else first_valid)
+            else:
+                filled.append(val)
+                last_valid = val
+        return filled
+
+    rain_list = fill_none_list([safe_float_or_none(r) for r in forecast_data.get("apcp", [])], 0.0)
+    temp_list = fill_none_list([safe_float_or_none(t, treat_zero_as_none=True) for t in forecast_data.get("temp", [])], 15.0)
+    wind_list = fill_none_list([safe_float_or_none(w) for w in forecast_data.get("wspd", [])], 0.0)
+    gust_list = fill_none_list([safe_float_or_none(g) for g in forecast_data.get("gust", [])], 0.0)
+    rh_list = fill_none_list([safe_float_or_none(h) for h in forecast_data.get("rh", [])], 50.0)
+    cloud_list = fill_none_list([safe_float_or_none(c) for c in forecast_data.get("tcdc", [])], 0.0)
     
     num_steps = min(41, len(rain_list), len(temp_list), len(wind_list))
     
