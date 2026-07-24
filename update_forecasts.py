@@ -9,6 +9,7 @@ import requests
 # Add current directory to path just in case
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import imd_ping
+import database
 
 # Simple custom .env parser to avoid external dependencies
 def load_env(filepath=".env"):
@@ -448,6 +449,9 @@ def main():
         print(f"Error: KML file not found at {kml_path}")
         return
 
+    # Initialize production database schema
+    database.init_db()
+
     # Load previous alert states to check transitions
     if os.path.exists(state_path):
         try:
@@ -458,8 +462,9 @@ def main():
     else:
         previous_states = {}
 
-    # 1. Parse KML
+    # 1. Parse KML & Upsert Plants in Database
     power_plants = parse_kml(kml_path)
+    database.upsert_plants(power_plants)
     
     # 2. Get model date
     try:
@@ -504,6 +509,8 @@ def main():
             old_status = previous_states.get(name, "GREEN")
             if old_status != plant_result["alert_level"]:
                 print(f"  [State Change Detected] {name}: {old_status} -> {plant_result['alert_level']}")
+                # Record alert transition in Database
+                database.record_alert_transition(plant["id"], name, old_status, plant_result["alert_level"], plant_result["reasons"])
                 # Send notifications
                 send_telegram_alert(name, old_status, plant_result["alert_level"], plant_result["reasons"])
                 send_slack_alert(name, old_status, plant_result["alert_level"], plant_result["reasons"])
@@ -591,6 +598,13 @@ def main():
         "plants": results
     }
     
+    # Persist forecast run and station metrics to Database
+    database.record_forecast_run(
+        model_run_time=start_ist.strftime("%Y-%m-%d %H:%M"),
+        statistics=web_data["statistics"],
+        plants_results=results
+    )
+
     with open(json_data_path, "w", encoding="utf-8") as f:
         json.dump(web_data, f, indent=2)
         

@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend files
 COPY Catchment_NHPC.KML .
 COPY imd_ping.py .
+COPY database.py .
 COPY update_forecasts.py .
 
 # Copy web files

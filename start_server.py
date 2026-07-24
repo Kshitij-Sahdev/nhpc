@@ -14,13 +14,15 @@ import json
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timedelta
 
+import database
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         # Serve from the web subfolder
         super().__init__(*args, directory=WEB_DIR, **kwargs)
 
     def do_GET(self):
-        # Intercept weather forecast requests for arbitrary coordinates
+        # 1. API route: Custom location weather forecast
         if self.path.startswith('/api/forecast'):
             parsed_url = urlparse(self.path)
             query_params = parse_qs(parsed_url.query)
@@ -41,11 +43,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 lon = float(lon_param[0])
                 name = name_param[0] if name_param else f"Coordinates ({lat:.4f}, {lon:.4f})"
                 
-                # Import libraries dynamically to prevent potential issues
+                # Import libraries dynamically
                 import imd_ping
                 import update_forecasts
                 
-                # Fetch model base date to determine forecast intervals
                 try:
                     model_str = imd_ping.get_model()
                     start_utc = datetime.strptime(model_str, "%Y%m%d%H")
@@ -70,6 +71,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     "forecast": analysis["details"]
                 }
                 
+                # Log on-demand forecast request into database
+                database.record_on_demand_query(
+                    query_id=plant_result["id"],
+                    name=name,
+                    lat=lat,
+                    lon=lon,
+                    alert_level=analysis["alert_level"],
+                    summary=analysis["summary"],
+                    forecast=analysis["details"]
+                )
+                
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.send_header('Access-Control-Allow-Origin', '*')
@@ -84,7 +96,52 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
             return
-            
+
+        # 2. API route: Fetch all registered Hydro Power Plants
+        elif self.path == '/api/plants':
+            try:
+                plants = database.get_all_plants()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps(plants).encode('utf-8'))
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+            return
+
+        # 3. API route: Fetch Alert Transition History
+        elif self.path == '/api/alerts' or self.path == '/api/history':
+            try:
+                history = database.get_alert_history(limit=50)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps(history).encode('utf-8'))
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+            return
+
+        # 4. API route: Fetch Latest DB Forecast Run
+        elif self.path == '/api/latest':
+            try:
+                run_data = database.get_latest_forecast_run()
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(json.dumps(run_data or {}).encode('utf-8'))
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+            return
+
         super().do_GET()
 
 def run_server():
