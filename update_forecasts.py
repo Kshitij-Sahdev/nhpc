@@ -434,7 +434,7 @@ def send_email_alert(plant_name, old_status, new_status, reasons):
 
 # --- MAIN RUNNER ---
 def main():
-    workspace_dir = r"d:\bht bhayankar codin\nhpc"
+    workspace_dir = os.path.dirname(os.path.abspath(__file__))
     web_dir = os.path.join(workspace_dir, "web")
     os.makedirs(web_dir, exist_ok=True)
     kml_path = os.path.join(workspace_dir, "Catchment_NHPC.KML")
