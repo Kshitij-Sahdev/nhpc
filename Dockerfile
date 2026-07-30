@@ -30,8 +30,9 @@ COPY web/ ./web/
 # Create data directory with proper permissions
 RUN mkdir -p /app/data && chown -R appuser:appuser /app
 
-# Configure Nginx: serve static files + reverse proxy API to Python server
-RUN echo 'server { \
+# Configure Nginx: micro-caching + static files + reverse proxy API
+RUN echo 'proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=api_cache:10m max_size=50m inactive=15m use_temp_path=off; \
+server { \
     listen 80; \
     server_name _; \
     \
@@ -48,12 +49,16 @@ RUN echo 'server { \
         try_files $uri $uri/ =404; \
     } \
     \
-    # Reverse proxy API requests to Python server \
+    # Reverse proxy API requests to Python server with micro-caching \
     location /api/ { \
         proxy_pass http://127.0.0.1:8000; \
         proxy_set_header Host $host; \
         proxy_set_header X-Real-IP $remote_addr; \
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; \
+        proxy_cache api_cache; \
+        proxy_cache_valid 200 60s; \
+        proxy_cache_use_stale error timeout updating http_500 http_502 http_503 http_504; \
+        add_header X-Cache-Status $upstream_cache_status; \
         proxy_connect_timeout 10s; \
         proxy_read_timeout 60s; \
         proxy_send_timeout 10s; \

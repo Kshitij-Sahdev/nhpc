@@ -61,13 +61,17 @@ def validate_coordinates(lat_str, lon_str):
     return lat, lon
 
 
-def send_json_response(handler, status_code, data):
-    """Send a JSON response with proper headers."""
+def send_json_response(handler, status_code, data, cache_seconds=60):
+    """Send a JSON response with proper security & caching headers."""
     handler.send_response(status_code)
     handler.send_header('Content-Type', 'application/json')
     handler.send_header('Access-Control-Allow-Origin', handler.headers.get('Origin', '*'))
     handler.send_header('X-Content-Type-Options', 'nosniff')
     handler.send_header('X-Frame-Options', 'DENY')
+    if cache_seconds > 0:
+        handler.send_header('Cache-Control', f'public, max-age={cache_seconds}')
+    else:
+        handler.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
     handler.end_headers()
     handler.wfile.write(json.dumps(data).encode('utf-8'))
 
