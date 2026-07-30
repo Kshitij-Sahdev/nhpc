@@ -2,8 +2,8 @@ services:
   nhpc-dashboard:
     build: .
     container_name: nhpc-dashboard
-    ports:
-      - "${PORT:-8000}:80"
+    expose:
+      - "80"
     restart: always
     env_file:
       - .env
