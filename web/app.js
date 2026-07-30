@@ -42,8 +42,10 @@ const COLORS = {
 customLocations = JSON.parse(localStorage.getItem('nhpc_custom_locations') || '[]');
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize Lucide Icons
-    lucide.createIcons();
+    // Initialize Lucide Icons safely
+    if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+    }
     
     // Check if data is loaded
     if (!window.FORECAST_DATA) {
