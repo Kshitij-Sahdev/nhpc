@@ -1,5 +1,14 @@
 // NHPC Weather Warning System - Frontend Controller
 
+// XSS Prevention: escape user-controlled strings before innerHTML insertion
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    const s = String(str);
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(s));
+    return div.innerHTML;
+}
+
 // State variables
 let currentSelectedPlant = null;
 let currentChart = null;
@@ -83,9 +92,9 @@ function updateDashboardUI(data) {
         data.plants.forEach(plant => {
             if (mapMarkers[plant.id]) {
                 let popupText = `
-                    <div class="leaflet-popup-title">${plant.name}</div>
+                    <div class="leaflet-popup-title">${escapeHtml(plant.name)}</div>
                     <div class="leaflet-popup-desc">
-                        <strong>Status:</strong> ${plant.alert_level}<br>
+                        <strong>Status:</strong> ${escapeHtml(plant.alert_level)}<br>
                         <strong>24h Rain:</strong> ${plant.summary.rain_24h || 0.0} mm<br>
                         <strong>Max Wind:</strong> ${plant.summary.max_wind || 0.0} m/s
                     </div>
@@ -198,9 +207,9 @@ function addMapMarker(plant, isCustom = false) {
     const marker = L.marker([lat, lon], { icon: customIcon }).addTo(map);
     
     let popupText = `
-        <div class="leaflet-popup-title">${plant.name} ${isCustom ? '<span style="color: var(--color-blue); font-size: 0.65rem; font-weight: normal; margin-left: 4px;">(Searched)</span>' : ''}</div>
+        <div class="leaflet-popup-title">${escapeHtml(plant.name)} ${isCustom ? '<span style="color: var(--color-blue); font-size: 0.65rem; font-weight: normal; margin-left: 4px;">(Searched)</span>' : ''}</div>
         <div class="leaflet-popup-desc">
-            <strong>Status:</strong> ${status}<br>
+            <strong>Status:</strong> ${escapeHtml(status)}<br>
             <strong>24h Rain:</strong> ${plant.summary.rain_24h || 0.0} mm<br>
             <strong>Max Wind:</strong> ${plant.summary.max_wind || 0.0} m/s
         </div>
@@ -352,10 +361,10 @@ function populateStationList(plants) {
         
         li.innerHTML = `
             <div class="station-main">
-                <span class="station-name">${plant.name}</span>
+                <span class="station-name">${escapeHtml(plant.name)}</span>
                 <span class="station-meta">Lat: ${plant.lat.toFixed(2)}, Lon: ${plant.lon.toFixed(2)}</span>
             </div>
-            <span class="status-badge ${plant.alert_level.toLowerCase()}">${plant.alert_level}</span>
+            <span class="status-badge ${escapeHtml(plant.alert_level.toLowerCase())}">${escapeHtml(plant.alert_level)}</span>
         `;
         
         li.addEventListener('click', () => selectPlant(plant.id));
@@ -605,11 +614,11 @@ function populateCustomStationList() {
         
         li.innerHTML = `
             <div class="station-main">
-                <span class="station-name">${plant.name}</span>
+                <span class="station-name">${escapeHtml(plant.name)}</span>
                 <span class="station-meta">Lat: ${plant.lat.toFixed(2)}, Lon: ${plant.lon.toFixed(2)}</span>
             </div>
             <div style="display: flex; align-items: center; gap: 6px;">
-                <span class="status-badge ${plant.alert_level.toLowerCase()}">${plant.alert_level}</span>
+                <span class="status-badge ${escapeHtml(plant.alert_level.toLowerCase())}">${escapeHtml(plant.alert_level)}</span>
                 <button class="station-delete-btn" title="Delete Location">
                     <i data-lucide="trash-2"></i>
                 </button>
