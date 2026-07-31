@@ -1,47 +1,59 @@
+"""
+NHPC Weather Warning System — Forecast Processor & Alert Engine.
+
+Main orchestrator that:
+1. Parses KML/SHP boundary files for power plant catchment areas
+2. Fetches 120-hour IMD NWP forecasts for each station
+3. Analyzes weather thresholds (rainfall, wind, temperature)
+4. Detects alert state transitions (GREEN/YELLOW/RED)
+5. Dispatches multi-channel notifications (Telegram, Slack, Email)
+6. Persists results to the production database
+7. Generates web dashboard data files
+
+Usage:
+    python update_forecasts.py
+"""
+
 import os
 import sys
 import json
+import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
+
 import requests
 
-# Import weather fetching functions from imd_ping.py
-# Add current directory to path just in case
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import imd_ping
 import database
+from log import setup_logging, get_logger
+from config import get_settings
+from metrics import (
+    FORECAST_UPDATE_DURATION,
+    FORECAST_UPDATE_TOTAL,
+    FORECAST_STATION_COUNT,
+    ACTIVE_ALERTS,
+    ALERT_TRANSITIONS_TOTAL,
+    NOTIFICATION_TOTAL,
+)
+from exceptions import KMLParseError, NotificationError
 
-# Simple custom .env parser to avoid external dependencies
-def load_env(filepath=".env"):
-    if os.path.exists(filepath):
-        print(f"Loading configurations from {filepath}...")
-        with open(filepath, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" in line:
-                    key, val = line.split("=", 1)
-                    os.environ[key.strip()] = val.strip()
+logger = get_logger("nhpc.forecasts")
 
-# Load env variables at startup
-load_env(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
-# Monkey-patch imd_ping to cache the model name and avoid 27 redundant network requests!
-_cached_model = None
-_original_get_model = imd_ping.get_model
+# ---------------------------------------------------------------------------
+# Utility Functions
+# ---------------------------------------------------------------------------
 
-def cached_get_model():
-    global _cached_model
-    if _cached_model is None:
-        print("Fetching model date from IMD (once)...")
-        _cached_model = _original_get_model()
-        print(f"Model Date: {_cached_model}")
-    return _cached_model
+def safe_float(val: Any) -> float:
+    """Convert a value to float, returning 0.0 on failure.
 
-imd_ping.get_model = cached_get_model
+    Args:
+        val: Any value that might be a number, NaN string, or None.
 
-def safe_float(val):
+    Returns:
+        Float value, or 0.0 if conversion fails.
+    """
     if val is None or val == 'NaN' or val == 'nan':
         return 0.0
     try:
@@ -49,13 +61,26 @@ def safe_float(val):
     except (ValueError, TypeError):
         return 0.0
 
-def clean_name(pm_name, doc_name):
+
+def clean_name(pm_name: Optional[str], doc_name: str) -> str:
+    """Clean and normalize power plant names from KML metadata.
+
+    Applies a mapping table for known abbreviations and appends
+    disambiguation suffixes for duplicate names.
+
+    Args:
+        pm_name: Placemark name from KML (may be None or 'Unnamed').
+        doc_name: Document name from KML (used as fallback).
+
+    Returns:
+        Cleaned, human-readable plant name.
+    """
     raw_name = pm_name or ""
     doc_clean = doc_name.replace(".shp", "").replace(".kml", "").replace("_catchment", "").strip()
-    
+
     if not raw_name or raw_name.lower() in ["unnamed", "export_output", ""]:
         raw_name = doc_clean
-        
+
     mapping = {
         "TanakpurCorrected": "Tanakpur",
         "SubLowdam": "Subansiri Lower",
@@ -65,26 +90,39 @@ def clean_name(pm_name, doc_name):
         "Uri_I": "Uri I",
         "Uri_II": "Uri II"
     }
-    
+
     if raw_name in mapping:
         raw_name = mapping[raw_name]
-        
+
     if doc_clean in mapping:
         doc_clean = mapping[doc_clean]
-        
+
     if raw_name.lower() in ["unnamed", "export_output", ""]:
         raw_name = doc_clean
-        
+
     # Append (Project) or (Catchment) to distinguish duplicates
     if doc_name.endswith('.kml') and raw_name in ["Kishanganga", "Dibang"]:
         raw_name = f"{raw_name} (Project)"
     elif doc_name.endswith('.shp') and raw_name in ["Kishanganga"]:
         raw_name = f"{raw_name} (Catchment)"
-        
+
     raw_name = raw_name.replace("_", " ")
     return raw_name.strip()
 
-def downsample_coordinates(coords, max_points=100):
+
+def downsample_coordinates(
+    coords: List[List[float]],
+    max_points: int = 100,
+) -> List[List[float]]:
+    """Downsample polygon coordinates to reduce payload size.
+
+    Args:
+        coords: List of [lat, lon] coordinate pairs.
+        max_points: Maximum number of points to keep.
+
+    Returns:
+        Downsampled coordinate list, preserving closure if original was closed.
+    """
     if len(coords) <= max_points:
         return coords
     step = len(coords) // max_points
@@ -96,25 +134,49 @@ def downsample_coordinates(coords, max_points=100):
         downsampled.append(downsampled[0])
     return downsampled
 
-def parse_kml(kml_path):
-    print(f"Parsing KML file: {kml_path}")
+
+# ---------------------------------------------------------------------------
+# KML Parsing
+# ---------------------------------------------------------------------------
+
+def parse_kml(kml_path: str) -> List[Dict[str, Any]]:
+    """Parse KML file to extract power plant catchment boundaries and centroids.
+
+    Args:
+        kml_path: Absolute path to the KML file.
+
+    Returns:
+        List of plant dicts with id, name, document, lat, lon, boundaries.
+
+    Raises:
+        KMLParseError: If the KML file is missing or unparseable.
+    """
+    logger.info("Parsing KML file: %s", kml_path)
+
+    if not os.path.exists(kml_path):
+        raise KMLParseError(f"KML file not found at {kml_path}")
+
     ns = {'kml': 'http://www.opengis.net/kml/2.2'}
-    
-    tree = ET.parse(kml_path)
+
+    try:
+        tree = ET.parse(kml_path)
+    except ET.ParseError as e:
+        raise KMLParseError(f"Failed to parse KML file: {e}") from e
+
     root = tree.getroot()
-    
-    power_plants = []
-    
+
+    power_plants: List[Dict[str, Any]] = []
+
     documents = root.findall('.//kml:Document', ns)
     for doc in documents:
         doc_name_el = doc.find('kml:name', ns)
         doc_name = doc_name_el.text if doc_name_el is not None else "Unnamed Document"
-        
+
         placemarks = doc.findall('.//kml:Placemark', ns)
         for pm in placemarks:
             name_el = pm.find('kml:name', ns)
             pm_name = name_el.text if name_el is not None else None
-            
+
             # SimpleData Name check
             simple_name = None
             extended_data = pm.find('kml:ExtendedData', ns)
@@ -123,19 +185,19 @@ def parse_kml(kml_path):
                     if sd.attrib.get('name') == 'Name':
                         simple_name = sd.text
                         break
-            
+
             resolved_name = pm_name or simple_name
             cleaned = clean_name(resolved_name, doc_name)
-            
+
             # Extract coordinates
             coord_elements = pm.findall('.//kml:coordinates', ns)
-            polygons = []
-            all_points = []
-            
+            polygons: List[List[List[float]]] = []
+            all_points: List[Tuple[float, float]] = []
+
             for elem in coord_elements:
                 text = elem.text or ""
                 parts = text.strip().split()
-                poly_coords = []
+                poly_coords: List[List[float]] = []
                 for p in parts:
                     if not p:
                         continue
@@ -144,21 +206,21 @@ def parse_kml(kml_path):
                         try:
                             lon = float(c_parts[0])
                             lat = float(c_parts[1])
-                            poly_coords.append([lat, lon]) # Leaflet standard is [lat, lon]
+                            poly_coords.append([lat, lon])  # Leaflet standard is [lat, lon]
                             all_points.append((lat, lon))
                         except ValueError:
                             pass
                 if poly_coords:
                     polygons.append(downsample_coordinates(poly_coords, 80))
-            
+
             if not all_points:
                 continue
-                
+
             lats = [pt[0] for pt in all_points]
             lons = [pt[1] for pt in all_points]
             centroid_lat = sum(lats) / len(lats)
             centroid_lon = sum(lons) / len(lons)
-            
+
             power_plants.append({
                 "id": len(power_plants) + 1,
                 "name": cleaned,
@@ -167,11 +229,35 @@ def parse_kml(kml_path):
                 "lon": round(centroid_lon, 5),
                 "boundaries": polygons
             })
-            
+
+    logger.info("Parsed %d power plant catchments from KML", len(power_plants))
     return power_plants
 
-def analyze_forecast(forecast_data, start_time_ist):
-    def safe_float_or_none(val, treat_zero_as_none=False):
+
+# ---------------------------------------------------------------------------
+# Forecast Analysis
+# ---------------------------------------------------------------------------
+
+def analyze_forecast(
+    forecast_data: Dict[str, Any],
+    start_time_ist: datetime,
+) -> Dict[str, Any]:
+    """Analyze raw IMD forecast data and determine alert level.
+
+    Evaluates rainfall, wind, temperature, humidity and cloud cover
+    against configurable thresholds to produce GREEN/YELLOW/RED alerts.
+
+    Args:
+        forecast_data: Raw forecast dict from IMD API with keys:
+                       apcp, temp, wspd, gust, rh, tcdc.
+        start_time_ist: Forecast start time in IST.
+
+    Returns:
+        Dict with alert_level, reasons, summary, and details.
+    """
+    settings = get_settings()
+
+    def safe_float_or_none(val: Any, treat_zero_as_none: bool = False) -> Optional[float]:
         if val is None or val == 'NaN' or val == 'nan' or str(val).strip().lower() in ['nan', 'null', 'none', '']:
             return None
         try:
@@ -182,17 +268,17 @@ def analyze_forecast(forecast_data, start_time_ist):
         except (ValueError, TypeError):
             return None
 
-    def fill_none_list(raw_list, default_val=0.0):
-        filled = []
-        first_valid = None
+    def fill_none_list(raw_list: List[Optional[float]], default_val: float = 0.0) -> List[float]:
+        filled: List[float] = []
+        first_valid: Optional[float] = None
         for val in raw_list:
             if val is not None:
                 first_valid = val
                 break
         if first_valid is None:
             first_valid = default_val
-            
-        last_valid = None
+
+        last_valid: Optional[float] = None
         for val in raw_list:
             if val is None:
                 filled.append(last_valid if last_valid is not None else first_valid)
@@ -207,54 +293,53 @@ def analyze_forecast(forecast_data, start_time_ist):
     gust_list = fill_none_list([safe_float_or_none(g) for g in forecast_data.get("gust", [])], 0.0)
     rh_list = fill_none_list([safe_float_or_none(h) for h in forecast_data.get("rh", [])], 50.0)
     cloud_list = fill_none_list([safe_float_or_none(c) for c in forecast_data.get("tcdc", [])], 0.0)
-    
+
     num_steps = min(41, len(rain_list), len(temp_list), len(wind_list))
-    
-    times_ist = []
+
+    times_ist: List[str] = []
     for i in range(num_steps):
-        time_val = start_time_ist + timedelta(hours=i*3)
+        time_val = start_time_ist + timedelta(hours=i * 3)
         times_ist.append(time_val.strftime("%Y-%m-%d %H:%M"))
-        
-    warnings = []
+
     alert_level = "GREEN"
-    
+
     # 1. Check max 3h rain
     max_3h_rain = max(rain_list) if rain_list else 0.0
     max_3h_rain_idx = rain_list.index(max_3h_rain) if rain_list else 0
     max_3h_rain_time = times_ist[max_3h_rain_idx] if times_ist else ""
-    
+
     # 2. Cumulative rain
     rain_24h = sum(rain_list[:8]) if len(rain_list) >= 8 else sum(rain_list)
     rain_48h = sum(rain_list[:16]) if len(rain_list) >= 16 else sum(rain_list)
     rain_72h = sum(rain_list[:24]) if len(rain_list) >= 24 else sum(rain_list)
-    
+
     # 3. Wind speed and Gusts
     max_wind = max(wind_list) if wind_list else 0.0
     max_gust = max(gust_list) if gust_list else 0.0
-    
-    # Determine alert thresholds
-    reasons = []
-    if max_3h_rain > 30.0:
+
+    # Determine alert thresholds (from configuration)
+    reasons: List[str] = []
+    if max_3h_rain > settings.ALERT_RAIN_3H_RED:
         alert_level = "RED"
         reasons.append(f"Extreme peak rainfall of {max_3h_rain:.1f} mm in 3h expected at {max_3h_rain_time}")
-    elif max_3h_rain > 15.0:
+    elif max_3h_rain > settings.ALERT_RAIN_3H_YELLOW:
         alert_level = "YELLOW"
         reasons.append(f"Heavy peak rainfall of {max_3h_rain:.1f} mm in 3h expected at {max_3h_rain_time}")
-        
-    if rain_24h > 100.0:
+
+    if rain_24h > settings.ALERT_RAIN_24H_RED:
         alert_level = "RED"
         reasons.append(f"Extreme 24-hour cumulative rainfall of {rain_24h:.1f} mm expected")
-    elif rain_24h > 50.0 and alert_level != "RED":
+    elif rain_24h > settings.ALERT_RAIN_24H_YELLOW and alert_level != "RED":
         alert_level = "YELLOW"
         reasons.append(f"Heavy 24-hour cumulative rainfall of {rain_24h:.1f} mm expected")
-        
-    if max_gust > 25.0:
+
+    if max_gust > settings.ALERT_GUST_RED:
         alert_level = "RED"
         reasons.append(f"Extreme wind gust of {max_gust:.1f} m/s expected")
-    elif max_gust > 15.0 and alert_level != "RED":
+    elif max_gust > settings.ALERT_GUST_YELLOW and alert_level != "RED":
         alert_level = "YELLOW"
         reasons.append(f"High wind gust of {max_gust:.1f} m/s expected")
-        
+
     cleaned_forecast = {
         "times": times_ist,
         "rain": [round(r, 2) for r in rain_list[:num_steps]],
@@ -264,7 +349,7 @@ def analyze_forecast(forecast_data, start_time_ist):
         "rh": [round(h, 1) for h in rh_list[:num_steps]],
         "cloud_cover": [round(c, 1) for c in cloud_list[:num_steps]]
     }
-    
+
     return {
         "alert_level": alert_level,
         "reasons": reasons,
@@ -281,13 +366,29 @@ def analyze_forecast(forecast_data, start_time_ist):
         "details": cleaned_forecast
     }
 
-# --- ALERTS NOTIFICATIONS ---
-def send_telegram_alert(plant_name, old_status, new_status, reasons):
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
-    if not token or not chat_id:
+
+# ---------------------------------------------------------------------------
+# Alert Notifications
+# ---------------------------------------------------------------------------
+
+def send_telegram_alert(
+    plant_name: str,
+    old_status: str,
+    new_status: str,
+    reasons: List[str],
+) -> None:
+    """Send alert notification via Telegram Bot API.
+
+    Silently returns if Telegram credentials are not configured.
+    """
+    settings = get_settings()
+    token = settings.TELEGRAM_BOT_TOKEN
+    chat_id = settings.TELEGRAM_CHAT_ID
+
+    if not token or not chat_id or token.startswith("your_"):
+        logger.debug("Telegram not configured — skipping alert for %s", plant_name)
         return
-    
+
     emoji = "🔴" if new_status == "RED" else ("🟡" if new_status == "YELLOW" else "🟢")
     text = (
         f"{emoji} <b>NHPC WEATHER WARNING ALERT</b>\n"
@@ -299,7 +400,7 @@ def send_telegram_alert(plant_name, old_status, new_status, reasons):
         text += "\n<b>Active Hazard Details:</b>\n"
         for r in reasons:
             text += f"• {r}\n"
-            
+
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -309,20 +410,35 @@ def send_telegram_alert(plant_name, old_status, new_status, reasons):
     try:
         r = requests.post(url, json=payload, timeout=10)
         r.raise_for_status()
-        print(f"  [Telegram Alert Sent] for {plant_name}")
+        logger.info("Telegram alert sent for %s", plant_name)
+        NOTIFICATION_TOTAL.labels(channel="telegram", status="success").inc()
     except Exception as ex:
-        print(f"  [Telegram Error] Failed to send alert: {ex}")
+        logger.error("Telegram alert failed for %s: %s", plant_name, ex)
+        NOTIFICATION_TOTAL.labels(channel="telegram", status="error").inc()
 
-def send_slack_alert(plant_name, old_status, new_status, reasons):
-    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
-    if not webhook_url:
+
+def send_slack_alert(
+    plant_name: str,
+    old_status: str,
+    new_status: str,
+    reasons: List[str],
+) -> None:
+    """Send alert notification via Slack Incoming Webhook.
+
+    Silently returns if Slack webhook is not configured.
+    """
+    settings = get_settings()
+    webhook_url = settings.SLACK_WEBHOOK_URL
+
+    if not webhook_url or webhook_url.startswith("https://hooks.slack.com/services/T00000000"):
+        logger.debug("Slack not configured — skipping alert for %s", plant_name)
         return
-        
+
     color = "#ef4444" if new_status == "RED" else ("#f59e0b" if new_status == "YELLOW" else "#10b981")
     emoji = "🚨" if new_status == "RED" else ("⚠️" if new_status == "YELLOW" else "✅")
-    
+
     reasons_text = "\n".join([f"• {r}" for r in reasons]) if reasons else "No warnings active."
-    
+
     payload = {
         "attachments": [
             {
@@ -354,30 +470,44 @@ def send_slack_alert(plant_name, old_status, new_status, reasons):
     try:
         r = requests.post(webhook_url, json=payload, timeout=10)
         r.raise_for_status()
-        print(f"  [Slack Alert Sent] for {plant_name}")
+        logger.info("Slack alert sent for %s", plant_name)
+        NOTIFICATION_TOTAL.labels(channel="slack", status="success").inc()
     except Exception as ex:
-        print(f"  [Slack Error] Failed to send alert: {ex}")
+        logger.error("Slack alert failed for %s: %s", plant_name, ex)
+        NOTIFICATION_TOTAL.labels(channel="slack", status="error").inc()
 
-def send_email_alert(plant_name, old_status, new_status, reasons):
+
+def send_email_alert(
+    plant_name: str,
+    old_status: str,
+    new_status: str,
+    reasons: List[str],
+) -> None:
+    """Send alert notification via SMTP email.
+
+    Silently returns if SMTP credentials are not configured.
+    """
     import smtplib
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
-    
-    smtp_server = os.environ.get("SMTP_SERVER")
-    smtp_port = os.environ.get("SMTP_PORT")
-    smtp_user = os.environ.get("SMTP_USER")
-    smtp_pass = os.environ.get("SMTP_PASSWORD")
-    sender = os.environ.get("SMTP_SENDER", smtp_user)
-    recipient = os.environ.get("ALERT_RECIPIENT_EMAIL")
-    
-    if not all([smtp_server, smtp_port, smtp_user, smtp_pass, recipient]):
+
+    settings = get_settings()
+    smtp_server = settings.SMTP_SERVER
+    smtp_port = settings.SMTP_PORT
+    smtp_user = settings.SMTP_USER
+    smtp_pass = settings.SMTP_PASSWORD
+    sender = settings.SMTP_SENDER or smtp_user
+    recipient = settings.ALERT_RECIPIENT_EMAIL
+
+    if not all([smtp_server, smtp_user, smtp_pass, recipient]):
+        logger.debug("Email (SMTP) not configured — skipping alert for %s", plant_name)
         return
-        
+
     emoji = "🚨" if new_status == "RED" else ("⚠️" if new_status == "YELLOW" else "✅")
     subject = f"{emoji} [NHPC Weather Alert] {plant_name} Status Changed to {new_status}"
-    
+
     reasons_li = "".join([f"<li>{r}</li>" for r in reasons]) if reasons else "<li>No alerts active</li>"
-    
+
     html = f"""
     <html>
     <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px;">
@@ -402,7 +532,7 @@ def send_email_alert(plant_name, old_status, new_status, reasons):
                     <td style="padding: 10px; border: 1px solid #dddddd;">{datetime.now().strftime('%Y-%m-%d %H:%M:%S IST')}</td>
                 </tr>
             </table>
-            
+
             <h3 style="color: #333333;">Active Hazards / Details:</h3>
             <ul style="padding-left: 20px; line-height: 1.6; color: #555555;">
                 {reasons_li}
@@ -415,38 +545,52 @@ def send_email_alert(plant_name, old_status, new_status, reasons):
     </body>
     </html>
     """
-    
+
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = recipient
     msg.attach(MIMEText(html, "html"))
-    
+
     try:
         server = smtplib.SMTP(smtp_server, int(smtp_port))
         server.starttls()
         server.login(smtp_user, smtp_pass)
         server.sendmail(sender, recipient, msg.as_string())
         server.close()
-        print(f"  [Email Alert Sent] to {recipient} for {plant_name}")
+        logger.info("Email alert sent to %s for %s", recipient, plant_name)
+        NOTIFICATION_TOTAL.labels(channel="email", status="success").inc()
     except Exception as ex:
-        print(f"  [Email Error] Failed to send alert: {ex}")
+        logger.error("Email alert failed for %s: %s", plant_name, ex)
+        NOTIFICATION_TOTAL.labels(channel="email", status="error").inc()
 
-# --- MAIN RUNNER ---
-def main():
-    workspace_dir = os.path.dirname(os.path.abspath(__file__))
-    web_dir = os.path.join(workspace_dir, "web")
+
+# ---------------------------------------------------------------------------
+# Main Runner
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    """Execute the complete forecast scrape, analysis, and alert cycle.
+
+    This is the main entry point called by the scraper loop or manual execution.
+    """
+    run_start = time.monotonic()
+    settings = get_settings()
+
+    workspace_dir = settings.WORKSPACE_DIR
+    web_dir = settings.WEB_DIR
     os.makedirs(web_dir, exist_ok=True)
-    kml_path = os.path.join(workspace_dir, "Catchment_NHPC.KML")
+    kml_path = settings.KML_PATH
     summary_txt_path = os.path.join(workspace_dir, "weather_forecast_summary.txt")
     js_data_path = os.path.join(web_dir, "forecast_data.js")
     json_data_path = os.path.join(web_dir, "forecasts.json")
-    data_dir = os.path.join(workspace_dir, "data")
+    data_dir = settings.DATA_DIR
     os.makedirs(data_dir, exist_ok=True)
     state_path = os.path.join(data_dir, "alert_state.json")
-    
+
     if not os.path.exists(kml_path):
-        print(f"Error: KML file not found at {kml_path}")
+        logger.error("KML file not found at %s", kml_path)
+        FORECAST_UPDATE_TOTAL.labels(status="error").inc()
         return
 
     # Initialize production database schema
@@ -457,41 +601,48 @@ def main():
         try:
             with open(state_path, "r", encoding="utf-8") as sf:
                 previous_states = json.load(sf)
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to load alert state file (%s). Starting fresh.", e)
             previous_states = {}
     else:
         previous_states = {}
 
     # 1. Parse KML & Upsert Plants in Database
-    power_plants = parse_kml(kml_path)
+    try:
+        power_plants = parse_kml(kml_path)
+    except KMLParseError as e:
+        logger.error("KML parsing failed: %s", e)
+        FORECAST_UPDATE_TOTAL.labels(status="error").inc()
+        return
+
     database.upsert_plants(power_plants)
-    
+
     # 2. Get model date
     try:
         model_str = imd_ping.get_model()
         start_utc = datetime.strptime(model_str, "%Y%m%d%H")
         start_ist = start_utc + timedelta(hours=5, minutes=30)
     except Exception as e:
-        print(f"Warning: Failed to get or parse model date ({e}). Using current time.")
+        logger.warning("Failed to get or parse model date (%s). Using current time.", e)
         start_ist = datetime.now()
         model_str = start_ist.strftime("%Y%m%d00")
 
-    print(f"Weather forecast start time (IST): {start_ist.strftime('%Y-%m-%d %H:%M')}")
-    
+    logger.info("Weather forecast start time (IST): %s", start_ist.strftime("%Y-%m-%d %H:%M"))
+
     # 3. Fetch forecasts and analyze
-    results = []
+    results: List[Dict[str, Any]] = []
     total = len(power_plants)
-    
+
     for idx, plant in enumerate(power_plants):
         name = plant["name"]
         lat = plant["lat"]
         lon = plant["lon"]
-        
-        print(f"[{idx+1}/{total}] Fetching forecast for {name} ({lat}, {lon})...")
+
+        logger.info("[%d/%d] Fetching forecast for %s (%s, %s)", idx + 1, total, name, lat, lon)
         try:
             forecast_raw = imd_ping.get_forecast(lat, lon)
             analysis = analyze_forecast(forecast_raw["forecast"], start_ist)
-            
+
             plant_result = {
                 "id": plant["id"],
                 "name": name,
@@ -504,23 +655,33 @@ def main():
                 "forecast": analysis["details"]
             }
             results.append(plant_result)
-            
+
             # State transition and notification checks
             old_status = previous_states.get(name, "GREEN")
             if old_status != plant_result["alert_level"]:
-                print(f"  [State Change Detected] {name}: {old_status} -> {plant_result['alert_level']}")
+                logger.info(
+                    "Alert state change: %s: %s -> %s",
+                    name, old_status, plant_result["alert_level"],
+                )
+                ALERT_TRANSITIONS_TOTAL.labels(
+                    old_status=old_status, new_status=plant_result["alert_level"]
+                ).inc()
+
                 # Record alert transition in Database
-                database.record_alert_transition(plant["id"], name, old_status, plant_result["alert_level"], plant_result["reasons"])
+                database.record_alert_transition(
+                    plant["id"], name, old_status,
+                    plant_result["alert_level"], plant_result["reasons"],
+                )
                 # Send notifications
                 send_telegram_alert(name, old_status, plant_result["alert_level"], plant_result["reasons"])
                 send_slack_alert(name, old_status, plant_result["alert_level"], plant_result["reasons"])
                 send_email_alert(name, old_status, plant_result["alert_level"], plant_result["reasons"])
-            
+
             # Update state
             previous_states[name] = plant_result["alert_level"]
-            
+
         except Exception as e:
-            print(f"  Error fetching forecast for {name}: {e}")
+            logger.error("Error fetching forecast for %s: %s", name, e, exc_info=True)
             results.append({
                 "id": plant["id"],
                 "name": name,
@@ -532,26 +693,33 @@ def main():
                 "summary": {},
                 "forecast": {}
             })
-            
+
     # Save updated alert states
     with open(state_path, "w", encoding="utf-8") as sf:
         json.dump(previous_states, sf, indent=2)
-            
+
     # 4. Generate summary report
-    print(f"Writing summary report to: {summary_txt_path}")
+    logger.info("Writing summary report to: %s", summary_txt_path)
     current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
     red_count = sum(1 for r in results if r["alert_level"] == "RED")
     yellow_count = sum(1 for r in results if r["alert_level"] == "YELLOW")
     green_count = sum(1 for r in results if r["alert_level"] == "GREEN")
     unknown_count = sum(1 for r in results if r["alert_level"] == "UNKNOWN")
-    
+
+    # Update Prometheus gauges
+    ACTIVE_ALERTS.labels(level="RED").set(red_count)
+    ACTIVE_ALERTS.labels(level="YELLOW").set(yellow_count)
+    ACTIVE_ALERTS.labels(level="GREEN").set(green_count)
+    ACTIVE_ALERTS.labels(level="UNKNOWN").set(unknown_count)
+    FORECAST_STATION_COUNT.set(total)
+
     with open(summary_txt_path, "w", encoding="utf-8") as f:
         f.write("=" * 80 + "\n")
         f.write("             HYDRO POWER PLANT WEATHER WARNING SYSTEM SUMMARY\n")
         f.write("=" * 80 + "\n")
         f.write(f"Report Generated: {current_time_str}\n")
         f.write(f"IMD Model Run Base Time (IST): {start_ist.strftime('%Y-%m-%d %H:%M')}\n\n")
-        
+
         f.write("SUMMARY STATISTICS:\n")
         f.write(f"  RED ALERT (High Risk)      : {red_count} plants\n")
         f.write(f"  YELLOW WATCH (Medium Risk) : {yellow_count} plants\n")
@@ -559,7 +727,7 @@ def main():
         if unknown_count > 0:
             f.write(f"  UNKNOWN (Fetch Error)      : {unknown_count} plants\n")
         f.write("\n" + "-" * 80 + "\n")
-        
+
         f.write("ACTIVE WARNINGS & ALERTS:\n")
         f.write("-" * 80 + "\n")
         warning_found = False
@@ -572,7 +740,7 @@ def main():
                 f.write(f"  - 24h Rain: {r['summary'].get('rain_24h')} mm | 48h Rain: {r['summary'].get('rain_48h')} mm | Max Wind: {r['summary'].get('max_wind')} m/s\n\n")
         if not warning_found:
             f.write("  No active alerts. All systems are green/safe.\n\n")
-            
+
         f.write("-" * 80 + "\n")
         f.write("ALL STATION FORECAST OVERVIEW:\n")
         f.write("-" * 80 + "\n")
@@ -585,7 +753,7 @@ def main():
         f.write("=" * 80 + "\n")
 
     # 5. Generate forecasts.json and forecast_data.js
-    print(f"Writing JSON data to: {json_data_path}")
+    logger.info("Writing JSON data to: %s", json_data_path)
     web_data = {
         "generated_at": current_time_str,
         "model_run": start_ist.strftime("%Y-%m-%d %H:%M"),
@@ -597,7 +765,7 @@ def main():
         },
         "plants": results
     }
-    
+
     # Persist forecast run and station metrics to Database
     database.record_forecast_run(
         model_run_time=start_ist.strftime("%Y-%m-%d %H:%M"),
@@ -607,15 +775,32 @@ def main():
 
     with open(json_data_path, "w", encoding="utf-8") as f:
         json.dump(web_data, f, indent=2)
-        
-    print(f"Writing JS wrapper to: {js_data_path}")
+
+    logger.info("Writing JS wrapper to: %s", js_data_path)
     with open(js_data_path, "w", encoding="utf-8") as f:
         f.write("// Consolidates all weather forecasts and shapes for the UI\n")
         f.write("window.FORECAST_DATA = ")
         json.dump(web_data, f)
         f.write(";\n")
-        
-    print("Forecast scraping, alert analysis, and file generation complete!")
+
+    # 6. Data cleanup (retention policy)
+    try:
+        database.cleanup_old_data(
+            forecast_days=settings.DB_CLEANUP_DAYS,
+        )
+    except Exception as e:
+        logger.warning("Data cleanup failed (non-fatal): %s", e)
+
+    run_elapsed = time.monotonic() - run_start
+    FORECAST_UPDATE_DURATION.observe(run_elapsed)
+    FORECAST_UPDATE_TOTAL.labels(status="success").inc()
+    logger.info(
+        "Forecast cycle complete: %d stations processed in %.1fs "
+        "(RED=%d, YELLOW=%d, GREEN=%d, UNKNOWN=%d)",
+        total, run_elapsed, red_count, yellow_count, green_count, unknown_count,
+    )
+
 
 if __name__ == "__main__":
+    setup_logging(level=get_settings().LOG_LEVEL, fmt=get_settings().LOG_FORMAT)
     main()

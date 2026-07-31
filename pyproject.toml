@@ -1,0 +1,113 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "nhpc-weather-warning"
+version = "1.0.0"
+description = "NHPC Hydro Power Plant Weather Warning & Flood Monitoring System"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.31.0,<3.0.0",
+    "pydantic>=2.0,<3.0",
+    "pydantic-settings>=2.0,<3.0",
+    "python-json-logger>=2.0,<3.0",
+    "colorlog>=6.0,<7.0",
+    "prometheus-client>=0.20,<1.0",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff (linter + formatter)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "S",    # flake8-bandit (security)
+]
+ignore = [
+    "E501",  # Line too long (handled by formatter)
+    "S101",  # Use of assert (needed in tests)
+    "S608",  # Possible SQL injection (false positives on hardcoded table names)
+    "B008",  # Do not perform function call in default argument (pydantic Field)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S106"]  # Allow assert and hardcoded passwords in tests
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
+
+# ---------------------------------------------------------------------------
+# Black (formatter — alternative to ruff format)
+# ---------------------------------------------------------------------------
+[tool.black]
+line-length = 120
+target-version = ["py39"]
+
+# ---------------------------------------------------------------------------
+# Mypy (type checker)
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+warn_unreachable = true
+disallow_untyped_defs = false  # Gradual adoption — don't enforce on everything yet
+ignore_missing_imports = true  # Third-party stubs not always available
+check_untyped_defs = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+check_untyped_defs = false
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "unit: Unit tests (fast, no I/O)",
+    "integration: Integration tests (require server, database)",
+    "regression: Regression tests with frozen fixtures",
+]
+
+# ---------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "tests/*",
+    "web/*",
+    "setup.py",
+    "backup_db.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 60  # Start conservative, increase as coverage grows
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.",
+    "raise NotImplementedError",
+]

@@ -1,24 +1,109 @@
+"""
+NHPC Weather Warning System — Production Database Layer.
+
+Provides SQLite database operations for storing power plant metadata,
+forecast runs, station weather metrics, alert state transitions, and
+on-demand custom coordinate queries.
+
+Features:
+- WAL mode for concurrent read/write access
+- Foreign key enforcement
+- Indexed columns for query performance
+- Connection context manager to prevent leaked connections
+- Data retention cleanup
+- Prometheus metrics instrumentation
+"""
+
 import os
 import json
+import time
 import sqlite3
-from datetime import datetime
+import contextlib
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
 
-DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-DB_PATH = os.path.join(DB_DIR, "nhpc_weather.db")
+from log import get_logger
+from config import get_settings
+from metrics import DB_QUERY_DURATION, DB_ERROR_TOTAL
+from exceptions import DatabaseError
 
-def get_connection(db_path=DB_PATH):
-    """Establishes and returns a connection to the SQLite database."""
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30)
-    conn.row_factory = sqlite3.Row
-    # Enable Foreign Key support
-    conn.execute("PRAGMA foreign_keys = ON;")
-    # Enable WAL mode for concurrent read/write access
-    conn.execute("PRAGMA journal_mode=WAL;")
-    return conn
+logger = get_logger("nhpc.database")
 
-def init_db(db_path=DB_PATH):
-    """Initializes the database schema and indexes if they do not exist."""
+# ---------------------------------------------------------------------------
+# Connection Management
+# ---------------------------------------------------------------------------
+
+def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
+    """Establishes and returns a connection to the SQLite database.
+
+    Args:
+        db_path: Optional override for the database file path.
+                 Defaults to the configured DB_PATH.
+
+    Returns:
+        A configured SQLite connection with row_factory, foreign keys,
+        and WAL journal mode enabled.
+
+    Raises:
+        DatabaseError: If the connection cannot be established.
+    """
+    if db_path is None:
+        db_path = get_settings().DB_PATH
+
+    try:
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        conn = sqlite3.connect(db_path, check_same_thread=False, timeout=30)
+        conn.row_factory = sqlite3.Row
+        # Enable Foreign Key support
+        conn.execute("PRAGMA foreign_keys = ON;")
+        # Enable WAL mode for concurrent read/write access
+        conn.execute("PRAGMA journal_mode=WAL;")
+        return conn
+    except sqlite3.Error as e:
+        DB_ERROR_TOTAL.labels(operation="connect").inc()
+        logger.error("Failed to connect to database at %s: %s", db_path, e)
+        raise DatabaseError(f"Database connection failed: {e}") from e
+
+
+@contextlib.contextmanager
+def get_db(db_path: Optional[str] = None):
+    """Context manager for database connections.
+
+    Automatically commits on success, rolls back on exception,
+    and always closes the connection.
+
+    Usage:
+        with get_db() as conn:
+            conn.execute("SELECT ...")
+    """
+    conn = get_connection(db_path)
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Schema Initialization
+# ---------------------------------------------------------------------------
+
+def init_db(db_path: Optional[str] = None) -> None:
+    """Initializes the database schema and indexes if they do not exist.
+
+    This function is idempotent — safe to call on every startup.
+
+    Args:
+        db_path: Optional override for the database file path.
+    """
+    start = time.monotonic()
+
+    if db_path is None:
+        db_path = get_settings().DB_PATH
+
     conn = get_connection(db_path)
     cursor = conn.cursor()
 
@@ -59,7 +144,7 @@ def init_db(db_path=DB_PATH):
         plant_name TEXT NOT NULL,
         lat REAL NOT NULL,
         lon REAL NOT NULL,
-        alert_level TEXT NOT NULL,
+        alert_level TEXT NOT NULL CHECK(alert_level IN ('GREEN','YELLOW','RED','UNKNOWN')),
         rain_24h REAL DEFAULT 0.0,
         rain_48h REAL DEFAULT 0.0,
         rain_72h REAL DEFAULT 0.0,
@@ -80,8 +165,8 @@ def init_db(db_path=DB_PATH):
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         plant_id TEXT NOT NULL,
         plant_name TEXT NOT NULL,
-        old_status TEXT NOT NULL,
-        new_status TEXT NOT NULL,
+        old_status TEXT NOT NULL CHECK(old_status IN ('GREEN','YELLOW','RED','UNKNOWN')),
+        new_status TEXT NOT NULL CHECK(new_status IN ('GREEN','YELLOW','RED','UNKNOWN')),
         reasons_json TEXT,
         triggered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
@@ -95,7 +180,7 @@ def init_db(db_path=DB_PATH):
         plant_name TEXT NOT NULL,
         lat REAL NOT NULL,
         lon REAL NOT NULL,
-        alert_level TEXT NOT NULL,
+        alert_level TEXT NOT NULL CHECK(alert_level IN ('GREEN','YELLOW','RED','UNKNOWN')),
         summary_json TEXT,
         forecast_json TEXT,
         requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -105,46 +190,86 @@ def init_db(db_path=DB_PATH):
     # Indexes for high performance querying
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_plant_forecasts_run ON plant_forecasts(forecast_run_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_plant_forecasts_name ON plant_forecasts(plant_name);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_plant_forecasts_run_name ON plant_forecasts(forecast_run_id, plant_name);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_alert_history_plant ON alert_history(plant_name);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_alert_history_triggered ON alert_history(triggered_at);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_forecast_runs_fetched ON forecast_runs(fetched_at);")
 
     conn.commit()
     conn.close()
-    print(f"[Database] Schema initialized successfully at {db_path}")
 
-def upsert_plants(plants, db_path=DB_PATH):
-    """Inserts or updates plant metadata in the database."""
+    elapsed = time.monotonic() - start
+    DB_QUERY_DURATION.labels(operation="init_db").observe(elapsed)
+    logger.info("Database schema initialized at %s (%.1fms)", db_path, elapsed * 1000)
+
+
+# ---------------------------------------------------------------------------
+# Plant Operations
+# ---------------------------------------------------------------------------
+
+def upsert_plants(plants: List[Dict[str, Any]], db_path: Optional[str] = None) -> None:
+    """Inserts or updates plant metadata in the database.
+
+    Args:
+        plants: List of plant dictionaries with id, name, document, lat, lon, boundaries.
+        db_path: Optional database path override.
+    """
+    start = time.monotonic()
+
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        for p in plants:
+            plant_id = str(p.get("id"))
+            name = p.get("name")
+            document = p.get("document", "")
+            lat = p.get("lat")
+            lon = p.get("lon")
+            boundaries_json = json.dumps(p.get("boundaries", []))
+
+            cursor.execute("""
+            INSERT INTO plants (id, name, document, lat, lon, boundaries_json, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(name) DO UPDATE SET
+                document=excluded.document,
+                lat=excluded.lat,
+                lon=excluded.lon,
+                boundaries_json=excluded.boundaries_json,
+                updated_at=CURRENT_TIMESTAMP;
+            """, (plant_id, name, document, lat, lon, boundaries_json))
+
+    elapsed = time.monotonic() - start
+    DB_QUERY_DURATION.labels(operation="upsert_plants").observe(elapsed)
+
+
+# ---------------------------------------------------------------------------
+# Forecast Run Operations
+# ---------------------------------------------------------------------------
+
+def record_forecast_run(
+    model_run_time: str,
+    statistics: Dict[str, int],
+    plants_results: List[Dict[str, Any]],
+    db_path: Optional[str] = None,
+) -> int:
+    """Records a complete forecast run along with all plant forecast outputs.
+
+    Args:
+        model_run_time: IMD model run timestamp string.
+        statistics: Dict with red/yellow/green/unknown counts.
+        plants_results: List of plant forecast result dicts.
+        db_path: Optional database path override.
+
+    Returns:
+        The ID of the created forecast run.
+
+    Raises:
+        DatabaseError: If the transaction fails.
+    """
+    start = time.monotonic()
+
     conn = get_connection(db_path)
     cursor = conn.cursor()
-    
-    for p in plants:
-        plant_id = str(p.get("id"))
-        name = p.get("name")
-        document = p.get("document", "")
-        lat = p.get("lat")
-        lon = p.get("lon")
-        boundaries_json = json.dumps(p.get("boundaries", []))
-        
-        cursor.execute("""
-        INSERT INTO plants (id, name, document, lat, lon, boundaries_json, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        ON CONFLICT(name) DO UPDATE SET
-            document=excluded.document,
-            lat=excluded.lat,
-            lon=excluded.lon,
-            boundaries_json=excluded.boundaries_json,
-            updated_at=CURRENT_TIMESTAMP;
-        """, (plant_id, name, document, lat, lon, boundaries_json))
-        
-    conn.commit()
-    conn.close()
 
-def record_forecast_run(model_run_time, statistics, plants_results, db_path=DB_PATH):
-    """Records a complete forecast run along with all plant forecast outputs."""
-    conn = get_connection(db_path)
-    cursor = conn.cursor()
-    
     try:
         # Insert Forecast Run
         cursor.execute("""
@@ -158,9 +283,9 @@ def record_forecast_run(model_run_time, statistics, plants_results, db_path=DB_P
             statistics.get("green", 0),
             statistics.get("unknown", 0)
         ))
-        
+
         run_id = cursor.lastrowid
-        
+
         # Insert Plant Forecasts
         for r in plants_results:
             summary = r.get("summary", {})
@@ -187,70 +312,140 @@ def record_forecast_run(model_run_time, statistics, plants_results, db_path=DB_P
                 json.dumps(summary),
                 json.dumps(r.get("forecast", {}))
             ))
-            
+
         conn.commit()
-        print(f"[Database] Forecast run #{run_id} persisted with {len(plants_results)} station forecasts.")
+
+        elapsed = time.monotonic() - start
+        DB_QUERY_DURATION.labels(operation="record_forecast_run").observe(elapsed)
+        logger.info(
+            "Forecast run #%d persisted with %d station forecasts (%.1fms)",
+            run_id, len(plants_results), elapsed * 1000,
+        )
         return run_id
+
     except Exception as e:
         conn.rollback()
-        print(f"[Database Error] Failed to record forecast run: {e}")
-        raise
+        DB_ERROR_TOTAL.labels(operation="record_forecast_run").inc()
+        logger.error("Failed to record forecast run: %s", e, exc_info=True)
+        raise DatabaseError(f"Failed to record forecast run: {e}") from e
     finally:
         conn.close()
 
-def record_alert_transition(plant_id, plant_name, old_status, new_status, reasons, db_path=DB_PATH):
-    """Records an alert status transition event."""
-    conn = get_connection(db_path)
-    cursor = conn.cursor()
-    cursor.execute("""
-    INSERT INTO alert_history (plant_id, plant_name, old_status, new_status, reasons_json)
-    VALUES (?, ?, ?, ?, ?);
-    """, (str(plant_id), plant_name, old_status, new_status, json.dumps(reasons)))
-    conn.commit()
-    conn.close()
-    print(f"[Database] Recorded alert transition for {plant_name}: {old_status} -> {new_status}")
 
-def record_on_demand_query(query_id, name, lat, lon, alert_level, summary, forecast, db_path=DB_PATH):
-    """Records an on-demand custom coordinate forecast query."""
-    conn = get_connection(db_path)
-    cursor = conn.cursor()
-    cursor.execute("""
-    INSERT INTO on_demand_forecasts (query_id, plant_name, lat, lon, alert_level, summary_json, forecast_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?);
-    """, (
-        query_id,
-        name,
-        lat,
-        lon,
-        alert_level,
-        json.dumps(summary),
-        json.dumps(forecast)
-    ))
-    conn.commit()
-    conn.close()
+# ---------------------------------------------------------------------------
+# Alert Operations
+# ---------------------------------------------------------------------------
 
-def get_latest_forecast_run(db_path=DB_PATH):
-    """Fetches the latest forecast run and its associated plant forecasts."""
+def record_alert_transition(
+    plant_id: Any,
+    plant_name: str,
+    old_status: str,
+    new_status: str,
+    reasons: List[str],
+    db_path: Optional[str] = None,
+) -> None:
+    """Records an alert status transition event.
+
+    Args:
+        plant_id: Identifier for the plant.
+        plant_name: Display name of the plant.
+        old_status: Previous alert level.
+        new_status: New alert level.
+        reasons: List of hazard reason strings.
+        db_path: Optional database path override.
+    """
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO alert_history (plant_id, plant_name, old_status, new_status, reasons_json)
+        VALUES (?, ?, ?, ?, ?);
+        """, (str(plant_id), plant_name, old_status, new_status, json.dumps(reasons)))
+
+    logger.info("Recorded alert transition for %s: %s -> %s", plant_name, old_status, new_status)
+
+
+def record_on_demand_query(
+    query_id: str,
+    name: str,
+    lat: float,
+    lon: float,
+    alert_level: str,
+    summary: Dict[str, Any],
+    forecast: Dict[str, Any],
+    db_path: Optional[str] = None,
+) -> None:
+    """Records an on-demand custom coordinate forecast query.
+
+    Args:
+        query_id: Unique identifier for the query.
+        name: Display name for the queried location.
+        lat: Latitude of the queried location.
+        lon: Longitude of the queried location.
+        alert_level: Computed alert level.
+        summary: Forecast summary dict.
+        forecast: Detailed forecast data dict.
+        db_path: Optional database path override.
+    """
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO on_demand_forecasts (query_id, plant_name, lat, lon, alert_level, summary_json, forecast_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?);
+        """, (
+            query_id,
+            name,
+            lat,
+            lon,
+            alert_level,
+            json.dumps(summary),
+            json.dumps(forecast)
+        ))
+
+
+# ---------------------------------------------------------------------------
+# Query Operations
+# ---------------------------------------------------------------------------
+
+def get_latest_forecast_run(db_path: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Fetches the latest forecast run and its associated plant forecasts.
+
+    Returns:
+        Dict with 'run' and 'forecasts' keys, or None if no runs exist.
+    """
+    start = time.monotonic()
+
     conn = get_connection(db_path)
     cursor = conn.cursor()
-    
+
     cursor.execute("SELECT * FROM forecast_runs ORDER BY id DESC LIMIT 1;")
     run = cursor.fetchone()
     if not run:
         conn.close()
         return None
-        
+
     cursor.execute("SELECT * FROM plant_forecasts WHERE forecast_run_id = ? ORDER BY id ASC;", (run['id'],))
     forecasts = cursor.fetchall()
-    
+
     conn.close()
+
+    elapsed = time.monotonic() - start
+    DB_QUERY_DURATION.labels(operation="get_latest_forecast_run").observe(elapsed)
+
     return {
         "run": dict(run),
         "forecasts": [dict(f) for f in forecasts]
     }
 
-def get_alert_history(limit=50, db_path=DB_PATH):
-    """Fetches recent alert transition history records."""
+
+def get_alert_history(limit: int = 50, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetches recent alert transition history records.
+
+    Args:
+        limit: Maximum number of records to return.
+
+    Returns:
+        List of alert transition dicts, newest first.
+    """
     conn = get_connection(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM alert_history ORDER BY id DESC LIMIT ?;", (limit,))
@@ -258,8 +453,13 @@ def get_alert_history(limit=50, db_path=DB_PATH):
     conn.close()
     return [dict(r) for r in rows]
 
-def get_all_plants(db_path=DB_PATH):
-    """Fetches all power plants metadata."""
+
+def get_all_plants(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetches all power plants metadata.
+
+    Returns:
+        List of plant dicts, sorted by name.
+    """
     conn = get_connection(db_path)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM plants ORDER BY name ASC;")
@@ -267,6 +467,104 @@ def get_all_plants(db_path=DB_PATH):
     conn.close()
     return [dict(r) for r in rows]
 
-if __name__ == "__main__":
-    init_db()
 
+# ---------------------------------------------------------------------------
+# Data Retention & Cleanup
+# ---------------------------------------------------------------------------
+
+def cleanup_old_data(
+    forecast_days: int = 90,
+    on_demand_days: int = 30,
+    db_path: Optional[str] = None,
+) -> Dict[str, int]:
+    """Removes old forecast and on-demand data beyond retention period.
+
+    Args:
+        forecast_days: Delete forecast runs older than this many days.
+        on_demand_days: Delete on-demand queries older than this many days.
+        db_path: Optional database path override.
+
+    Returns:
+        Dict with counts of deleted rows per table.
+    """
+    start = time.monotonic()
+    deleted = {"forecast_runs": 0, "plant_forecasts": 0, "on_demand_forecasts": 0}
+
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+
+        # Delete old forecast runs (cascades to plant_forecasts via FK)
+        forecast_cutoff = (datetime.now() - timedelta(days=forecast_days)).strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("SELECT COUNT(*) FROM forecast_runs WHERE fetched_at < ?;", (forecast_cutoff,))
+        deleted["forecast_runs"] = cursor.fetchone()[0]
+
+        if deleted["forecast_runs"] > 0:
+            # Count cascaded plant_forecasts before deletion
+            cursor.execute("""
+                SELECT COUNT(*) FROM plant_forecasts
+                WHERE forecast_run_id IN (
+                    SELECT id FROM forecast_runs WHERE fetched_at < ?
+                );
+            """, (forecast_cutoff,))
+            deleted["plant_forecasts"] = cursor.fetchone()[0]
+
+            cursor.execute("DELETE FROM forecast_runs WHERE fetched_at < ?;", (forecast_cutoff,))
+
+        # Delete old on-demand forecasts
+        od_cutoff = (datetime.now() - timedelta(days=on_demand_days)).strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("SELECT COUNT(*) FROM on_demand_forecasts WHERE requested_at < ?;", (od_cutoff,))
+        deleted["on_demand_forecasts"] = cursor.fetchone()[0]
+
+        if deleted["on_demand_forecasts"] > 0:
+            cursor.execute("DELETE FROM on_demand_forecasts WHERE requested_at < ?;", (od_cutoff,))
+
+    total_deleted = sum(deleted.values())
+    if total_deleted > 0:
+        logger.info(
+            "Data cleanup completed: %d forecast runs, %d plant forecasts, %d on-demand queries removed",
+            deleted["forecast_runs"],
+            deleted["plant_forecasts"],
+            deleted["on_demand_forecasts"],
+        )
+
+    elapsed = time.monotonic() - start
+    DB_QUERY_DURATION.labels(operation="cleanup_old_data").observe(elapsed)
+
+    return deleted
+
+
+def get_database_stats(db_path: Optional[str] = None) -> Dict[str, Any]:
+    """Returns database statistics for health checks.
+
+    Returns:
+        Dict with table row counts and database file size.
+    """
+    if db_path is None:
+        db_path = get_settings().DB_PATH
+
+    stats: Dict[str, Any] = {"file_size_mb": 0.0, "tables": {}}
+
+    if os.path.exists(db_path):
+        stats["file_size_mb"] = round(os.path.getsize(db_path) / (1024 * 1024), 2)
+
+    try:
+        conn = get_connection(db_path)
+        cursor = conn.cursor()
+        for table in ["plants", "forecast_runs", "plant_forecasts", "alert_history", "on_demand_forecasts"]:
+            cursor.execute(f"SELECT COUNT(*) FROM {table};")  # noqa: S608 — table name is hardcoded, not user input
+            stats["tables"][table] = cursor.fetchone()[0]
+        conn.close()
+    except Exception as e:
+        logger.warning("Failed to gather database stats: %s", e)
+
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# Standalone Execution
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    from log import setup_logging
+    setup_logging()
+    init_db()

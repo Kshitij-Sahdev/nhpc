@@ -1,0 +1,14 @@
+.git
+__pycache__
+*.pyc
+*.pyo
+tests/
+*.md
+.env
+.gitignore
+.gitattributes
+.pre-commit-config.yaml
+.github/
+data/
+viva_prep.txt
+.agents/

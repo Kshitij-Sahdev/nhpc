@@ -1,5 +1,13 @@
 FROM python:3.9-slim
 
+LABEL maintainer="NHPC Dam Safety & Weather Operations"
+LABEL description="NHPC Hydro Power Plant Weather Warning & Flood Monitoring System"
+LABEL version="1.0.0"
+
+# Prevent Python from writing .pyc files and enable unbuffered output
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 # Install Nginx and supervisord for process management
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
@@ -23,6 +31,12 @@ COPY imd_ping.py .
 COPY database.py .
 COPY update_forecasts.py .
 COPY start_server.py .
+COPY config.py .
+COPY log.py .
+COPY exceptions.py .
+COPY metrics.py .
+COPY backup_db.py .
+COPY openapi.yaml .
 
 # Copy web files
 COPY web/ ./web/
@@ -63,6 +77,13 @@ server { \
         proxy_read_timeout 60s; \
         proxy_send_timeout 10s; \
     } \
+    \
+    # Prometheus metrics (restrict in production via firewall/network policy) \
+    location /metrics { \
+        proxy_pass http://127.0.0.1:8000; \
+        proxy_set_header Host $host; \
+        proxy_set_header X-Real-IP $remote_addr; \
+    } \
 }' > /etc/nginx/sites-available/default
 
 # Configure supervisord to manage all 3 processes
@@ -89,6 +110,7 @@ user=appuser\n\
 autostart=true\n\
 autorestart=true\n\
 priority=20\n\
+environment=APP_ENV="production",LOG_FORMAT="json"\n\
 stdout_logfile=/dev/stdout\n\
 stdout_logfile_maxbytes=0\n\
 stderr_logfile=/dev/stderr\n\
@@ -102,6 +124,7 @@ autostart=true\n\
 autorestart=true\n\
 priority=30\n\
 startsecs=5\n\
+environment=APP_ENV="production",LOG_FORMAT="json"\n\
 stdout_logfile=/dev/stdout\n\
 stdout_logfile_maxbytes=0\n\
 stderr_logfile=/dev/stderr\n\

@@ -1,0 +1,478 @@
+openapi: "3.0.3"
+info:
+  title: NHPC Hydro Weather Warning System API
+  description: |
+    REST API for the NHPC (National Hydroelectric Power Corporation) Weather
+    Warning and Flood Monitoring System. Provides real-time weather forecasts,
+    alert status tracking, and historical data for hydro power stations across India.
+
+    ## Data Source
+    Weather data is sourced from the India Meteorological Department (IMD)
+    Mausamgram 0.125° GFS/MME numerical weather prediction model.
+
+    ## Alert Levels
+    | Level | Condition |
+    |-------|-----------|
+    | **RED** | 3h rain > 30mm, 24h rain > 100mm, or gust > 25 m/s |
+    | **YELLOW** | 3h rain > 15mm, 24h rain > 50mm, or gust > 15 m/s |
+    | **GREEN** | Normal conditions |
+    | **UNKNOWN** | Fetch error |
+  version: "1.0.0"
+  contact:
+    name: NHPC Dam Safety & Weather Operations
+  license:
+    name: Internal Use
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: http://localhost:80
+    description: Docker Nginx reverse proxy
+
+paths:
+  /api/health:
+    get:
+      summary: Health Check
+      description: |
+        Returns overall system health including database connectivity,
+        last forecast run timestamp, disk usage, memory, and uptime.
+      operationId: getHealth
+      tags: [Health]
+      responses:
+        "200":
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: healthy
+                timestamp: "2026-07-30 14:30:00 IST"
+                database: connected
+                last_forecast_run: "2026-07-30 12:00:00"
+                uptime_seconds: 86400
+        "503":
+          description: System is degraded (e.g., database unreachable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/liveness:
+    get:
+      summary: Liveness Probe
+      description: |
+        Lightweight probe confirming the process is running.
+        Used by Kubernetes liveness probes. No dependency checks.
+      operationId: getLiveness
+      tags: [Health]
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: alive
+
+  /api/readiness:
+    get:
+      summary: Readiness Probe
+      description: |
+        Returns 200 only if the database is reachable and the last
+        forecast run is within the staleness threshold (12 hours).
+        Used by Kubernetes readiness probes.
+      operationId: getReadiness
+      tags: [Health]
+      responses:
+        "200":
+          description: System is ready to serve traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+                  database:
+                    type: string
+                    example: connected
+                  forecast_fresh:
+                    type: boolean
+                    example: true
+        "503":
+          description: System is not ready
+
+  /api/forecast:
+    get:
+      summary: On-Demand Coordinate Forecast
+      description: |
+        Computes a 5-day weather analysis for any arbitrary coordinates
+        within Indian geographic bounds. Results include alert level,
+        hazard reasons, summary statistics, and 3-hourly forecast data.
+      operationId: getForecast
+      tags: [Forecast]
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          description: Latitude (5.0 to 40.0, Indian region)
+          schema:
+            type: number
+            format: float
+            minimum: 5.0
+            maximum: 40.0
+          example: 31.2
+        - name: lon
+          in: query
+          required: true
+          description: Longitude (65.0 to 100.0, Indian region)
+          schema:
+            type: number
+            format: float
+            minimum: 65.0
+            maximum: 100.0
+          example: 77.1
+        - name: name
+          in: query
+          required: false
+          description: Optional display name for the location
+          schema:
+            type: string
+            maxLength: 200
+          example: "Custom Dam Site"
+      responses:
+        "200":
+          description: Forecast analysis result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ForecastResult"
+              example:
+                id: "custom-31_2000-77_1000"
+                name: "Custom Dam Site"
+                lat: 31.2
+                lon: 77.1
+                boundaries: []
+                alert_level: "YELLOW"
+                reasons:
+                  - "Heavy peak rainfall of 18.5 mm in 3h expected at 2026-07-25 14:00"
+                summary:
+                  max_temp: 32.5
+                  min_temp: 22.1
+                  max_3h_rain: 18.5
+                  rain_24h: 42.1
+                  rain_48h: 68.3
+                  rain_72h: 95.2
+                  max_wind: 8.4
+                  max_gust: 12.1
+                forecast:
+                  times: ["2026-07-25 06:00", "2026-07-25 09:00"]
+                  rain: [2.5, 5.1]
+                  temp: [24.3, 26.1]
+                  wind_speed: [3.2, 5.5]
+                  wind_gust: [5.1, 8.3]
+                  rh: [78.5, 82.1]
+                  cloud_cover: [60.0, 75.0]
+        "400":
+          description: Invalid parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Latitude must be between 5.0 and 40.0 for Indian region."
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/plants:
+    get:
+      summary: List Registered Power Stations
+      description: Returns all NHPC hydro power plants stored in the database.
+      operationId: getPlants
+      tags: [Plants]
+      responses:
+        "200":
+          description: List of power plants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Plant"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/alerts:
+    get:
+      summary: Alert Transition History
+      description: |
+        Returns the audit log of recent alert level changes
+        (e.g., GREEN → YELLOW, YELLOW → RED). Also available at /api/history.
+      operationId: getAlerts
+      tags: [Alerts]
+      responses:
+        "200":
+          description: List of alert transitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AlertTransition"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/history:
+    get:
+      summary: Alert Transition History (alias)
+      description: Alias for /api/alerts.
+      operationId: getHistory
+      tags: [Alerts]
+      responses:
+        "200":
+          description: List of alert transitions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AlertTransition"
+
+  /api/latest:
+    get:
+      summary: Latest Forecast Run
+      description: |
+        Returns the most recent forecast scrape run details including
+        statistics and per-station weather summaries.
+      operationId: getLatest
+      tags: [Forecast]
+      responses:
+        "200":
+          description: Latest forecast run data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatestForecastRun"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /metrics:
+    get:
+      summary: Prometheus Metrics
+      description: |
+        Exposes application metrics in Prometheus text exposition format.
+        Includes HTTP latency, request counts, forecast update duration,
+        database query times, and active alert counts.
+      operationId: getMetrics
+      tags: [Observability]
+      responses:
+        "200":
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded]
+        timestamp:
+          type: string
+        database:
+          type: string
+          enum: [connected, disconnected]
+        last_forecast_run:
+          type: string
+          nullable: true
+        uptime_seconds:
+          type: number
+
+    ForecastResult:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        lat:
+          type: number
+        lon:
+          type: number
+        boundaries:
+          type: array
+          items:
+            type: array
+        alert_level:
+          type: string
+          enum: [GREEN, YELLOW, RED, UNKNOWN]
+        reasons:
+          type: array
+          items:
+            type: string
+        summary:
+          $ref: "#/components/schemas/ForecastSummary"
+        forecast:
+          $ref: "#/components/schemas/ForecastDetails"
+
+    ForecastSummary:
+      type: object
+      properties:
+        max_temp:
+          type: number
+        min_temp:
+          type: number
+        max_3h_rain:
+          type: number
+        rain_24h:
+          type: number
+        rain_48h:
+          type: number
+        rain_72h:
+          type: number
+        max_wind:
+          type: number
+        max_gust:
+          type: number
+
+    ForecastDetails:
+      type: object
+      properties:
+        times:
+          type: array
+          items:
+            type: string
+        rain:
+          type: array
+          items:
+            type: number
+        temp:
+          type: array
+          items:
+            type: number
+        wind_speed:
+          type: array
+          items:
+            type: number
+        wind_gust:
+          type: array
+          items:
+            type: number
+        rh:
+          type: array
+          items:
+            type: number
+        cloud_cover:
+          type: array
+          items:
+            type: number
+
+    Plant:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        document:
+          type: string
+        lat:
+          type: number
+        lon:
+          type: number
+        boundaries_json:
+          type: string
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    AlertTransition:
+      type: object
+      properties:
+        id:
+          type: integer
+        plant_id:
+          type: string
+        plant_name:
+          type: string
+        old_status:
+          type: string
+          enum: [GREEN, YELLOW, RED, UNKNOWN]
+        new_status:
+          type: string
+          enum: [GREEN, YELLOW, RED, UNKNOWN]
+        reasons_json:
+          type: string
+        triggered_at:
+          type: string
+
+    LatestForecastRun:
+      type: object
+      properties:
+        run:
+          type: object
+          properties:
+            id:
+              type: integer
+            model_run_time:
+              type: string
+            fetched_at:
+              type: string
+            total_plants:
+              type: integer
+            red_count:
+              type: integer
+            yellow_count:
+              type: integer
+            green_count:
+              type: integer
+            unknown_count:
+              type: integer
+        forecasts:
+          type: array
+          items:
+            type: object
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+
+tags:
+  - name: Health
+    description: System health and availability probes
+  - name: Forecast
+    description: Weather forecast data and analysis
+  - name: Plants
+    description: Hydro power station metadata
+  - name: Alerts
+    description: Alert state transitions and history
+  - name: Observability
+    description: Metrics and monitoring endpoints

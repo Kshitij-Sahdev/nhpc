@@ -1,5 +1,6 @@
 # NHPC Hydro Power Plant Weather Warning & Flood Monitoring System
 
+![CI](https://github.com/Kshitij-Sahdev/nhpc/actions/workflows/ci.yml/badge.svg)
 ![System Status](https://img.shields.io/badge/System-Operational-brightgreen)
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![Database](https://img.shields.io/badge/Database-SQLite%2FPostgreSQL-orange.svg)
@@ -25,7 +26,11 @@ The system automatically pulls high-resolution Numerical Weather Prediction (NWP
   - [2. Docker Deployment](#2-docker-deployment)
 - [REST API Reference](#-rest-api-reference)
 - [Alert & Notification Integrations](#-alert--notification-integrations)
+- [Testing](#-testing)
+- [Health Checks & Observability](#-health-checks--observability)
+- [Configuration Reference](#-configuration-reference)
 - [Project Directory Structure](#-project-directory-structure)
+- [Troubleshooting](#-troubleshooting)
 - [License & Support](#-license--support)
 
 ---
@@ -343,37 +348,154 @@ When a station escalates from `GREEN` $\rightarrow$ `YELLOW` or `YELLOW` $\right
 
 ---
 
+## 🧪 Testing
+
+The project uses **pytest** with comprehensive unit, integration, and regression tests.
+
+```bash
+# Install dev dependencies
+pip install -r requirements-dev.txt
+
+# Run full test suite
+pytest -v
+
+# Run with coverage report
+pytest --cov=. --cov-report=term-missing -v
+
+# Run only unit tests (fast, no network)
+pytest -m unit -v
+
+# Run only integration tests
+pytest -m integration -v
+
+# Run regression tests (frozen IMD fixtures)
+pytest -m regression -v
+```
+
+---
+
+## 🔍 Health Checks & Observability
+
+### Kubernetes-Compatible Probes
+
+| Endpoint | Purpose | Checks |
+|----------|---------|--------|
+| `GET /api/liveness` | Liveness probe | Process is running (no deps) |
+| `GET /api/readiness` | Readiness probe | DB connected + forecast < 12h old |
+| `GET /api/health` | Full health check | DB, disk, uptime, last forecast |
+
+### Prometheus Metrics
+
+`GET /metrics` exposes application metrics:
+- `nhpc_http_request_duration_seconds` — API latency histogram
+- `nhpc_http_requests_total` — Request counter by endpoint/status
+- `nhpc_forecast_update_duration_seconds` — Scraper cycle duration
+- `nhpc_active_alerts` — Current alert count by level
+- `nhpc_imd_request_duration_seconds` — IMD API latency
+- `nhpc_db_query_duration_seconds` — Database query latency
+
+### API Documentation
+
+- **Redoc UI**: `http://localhost:8000/api/docs`
+- **OpenAPI Spec**: `http://localhost:8000/api/openapi.yaml`
+
+---
+
+## ⚙️ Configuration Reference
+
+All settings are configured via `.env` file or environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `APP_PORT` | `8000` | HTTP server port |
+| `APP_ENV` | `development` | `development` or `production` |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `LOG_FORMAT` | `text` | `text` (colored) or `json` (structured) |
+| `DB_PATH` | `data/nhpc_weather.db` | SQLite database path |
+| `DB_CLEANUP_DAYS` | `90` | Data retention period |
+| `IMD_BASE_URL` | `https://mausamgram.imd.gov.in` | IMD API base URL |
+| `IMD_REQUEST_TIMEOUT` | `10` | HTTP timeout (seconds) |
+| `IMD_MAX_RETRIES` | `2` | Retry attempts |
+| `IMD_CACHE_TTL` | `1800` | Forecast cache TTL (seconds) |
+| `RATE_LIMIT_RPM` | `60` | API rate limit per IP |
+| `TELEGRAM_BOT_TOKEN` | — | Telegram Bot API token |
+| `TELEGRAM_CHAT_ID` | — | Telegram chat/channel ID |
+| `SLACK_WEBHOOK_URL` | — | Slack webhook URL |
+| `SMTP_SERVER` | — | SMTP server hostname |
+| `SMTP_PORT` | `587` | SMTP port |
+| `SMTP_USER` | — | SMTP username |
+| `SMTP_PASSWORD` | — | SMTP password |
+| `ALERT_RECIPIENT_EMAIL` | — | Alert recipient |
+
+---
+
 ## 📁 Project Directory Structure
 
 ```
 nhpc/
 ├── Catchment_NHPC.KML            # Spatial boundary data for NHPC power stations
-├── Dockerfile                    # Containerization script (Nginx + Python scraper loop)
+├── Dockerfile                    # Containerization (Nginx + Python scraper loop)
 ├── README.md                     # Enterprise documentation (this file)
-├── database.py                   # Production SQLite/PostgreSQL database layer
-├── docker-compose.yml            # Docker orchestration with state volume persistence
-├── imd_ping.py                   # IMD Mausamgram API wrapper with RAM cache & disaster fallback
-├── requirements.txt              # Python dependencies
-├── setup_scheduling.md           # Automation & cron scheduling setup guide
-├── start_server.py               # HTTP server & REST API router (with Cache-Control headers)
-├── update_forecasts.py           # Main forecast processor & alert engine
-├── weather_forecast_summary.txt  # Plain-text executive operational report
+├── config.py                     # Centralized configuration (pydantic-settings)
+├── log.py                        # Structured logging utilities (JSON/colored)
+├── exceptions.py                 # Custom exception hierarchy
+├── metrics.py                    # Prometheus metrics definitions
+├── database.py                   # Production SQLite database layer
+├── imd_ping.py                   # IMD API client with cache & disaster fallback
+├── update_forecasts.py           # Forecast processor & alert engine
+├── start_server.py               # HTTP server & REST API
+├── backup_db.py                  # Database backup utility
+├── openapi.yaml                  # OpenAPI 3.0 API specification
+├── docker-compose.yml            # Docker orchestration
+├── requirements.txt              # Production dependencies
+├── requirements-dev.txt          # Development dependencies
+├── pyproject.toml                # Tool config (ruff, mypy, pytest)
+├── .pre-commit-config.yaml       # Git pre-commit hooks
+├── .env.example                  # Configuration template
+├── .dockerignore                 # Docker build context filter
+├── .github/
+│   └── workflows/ci.yml          # CI/CD pipeline (GitHub Actions)
 ├── data/
-│   ├── alert_state.json          # Cached status tracker
-│   └── nhpc_weather.db           # Persistent SQLite Database
+│   ├── alert_state.json          # Alert status tracker
+│   ├── nhpc_weather.db           # Persistent SQLite database
+│   └── backups/                  # Automated database backups
 ├── tests/
-│   └── test_nhpc_system.py       # Enterprise unittest suite
+│   ├── conftest.py               # Pytest fixtures
+│   ├── test_database.py          # Database unit tests
+│   ├── test_imd_ping.py          # IMD scraper unit tests
+│   ├── test_forecast_analysis.py # Alert analysis unit tests
+│   ├── test_api.py               # API integration tests
+│   ├── test_parser.py            # KML parser unit tests
+│   ├── test_regression.py        # Regression tests (frozen fixtures)
+│   └── test_nhpc_system.py       # Legacy test suite
 └── web/
-    ├── app.js                    # Leaflet map visuals, UI event handlers, Chart.js logic
-    ├── forecast_data.js          # JS wrapper for offline map loading
-    ├── forecasts.json            # Web dataset cache
-    ├── index.html                # Main dashboard UI
+    ├── app.js                    # Leaflet map, Chart.js, UI logic
+    ├── index.html                # Dashboard UI
     └── styles.css                # Dark-mode glassmorphism stylesheet
 ```
 
 ---
 
+## ❓ Troubleshooting
+
+**Q: The scraper shows "IMD API unreachable" errors.**
+A: IMD Mausamgram servers can be intermittently unavailable. The system automatically retries (2 attempts with backoff) and serves cached data during outages. Check `https://mausamgram.imd.gov.in` availability.
+
+**Q: Health check shows "degraded" status.**
+A: This means the database is unreachable. Check that `data/nhpc_weather.db` exists and has correct file permissions.
+
+**Q: Alerts are not being sent.**
+A: Verify `.env` credentials. Check logs for "not configured — skipping" messages. For Gmail SMTP, use an App Password, not your account password.
+
+**Q: Docker container fails to start.**
+A: Check `docker-compose logs -f nhpc-dashboard`. Common issues: port 80 already in use, `.env` file missing.
+
+**Q: Tests fail with import errors.**
+A: Run `pip install -r requirements-dev.txt` to install test dependencies.
+
+---
+
 ## 📄 License & Support
 
-Developed for **NHPC Hydro Power Plant Weather Warning & Flood Monitoring**. 
+Developed for **NHPC Hydro Power Plant Weather Warning & Flood Monitoring**.
 For system inquiries, feature requests, or technical support, contact the Dam Safety & Weather Operations Team.

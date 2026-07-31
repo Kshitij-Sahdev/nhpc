@@ -24,5 +24,19 @@ weather_forecast_summary.txt
 Thumbs.db
 .DS_Store
 
+# Testing & Coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Type checking
+.mypy_cache/
+
+# Distribution
+*.egg-info/
+dist/
+build/
+
 # Personal files
 viva_prep.txt
