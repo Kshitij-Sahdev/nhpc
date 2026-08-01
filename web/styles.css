@@ -448,38 +448,100 @@ body {
 }
 
 .station-item {
-    background: rgba(255, 255, 255, 0.01);
+    background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: 14px;
     padding: 10px 12px;
     cursor: pointer;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    gap: 6px;
     transition: all 0.25s var(--ease-apple);
 }
 
 .station-item:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.05);
     border-color: var(--border-color-glow);
     transform: translateY(-1px);
 }
 
 .station-item.active {
     background: rgba(56, 189, 248, 0.08);
-    border-color: rgba(56, 189, 248, 0.3);
+    border-color: rgba(56, 189, 248, 0.4);
     box-shadow: var(--shadow-sm);
 }
 
-.station-main {
+.station-card-content {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 8px;
+    width: 100%;
+}
+
+.station-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
 }
 
 .station-name {
-    font-size: 0.85rem;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.station-metrics-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    width: 100%;
+}
+
+.metric-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 3px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+}
+
+.metric-chip svg {
+    width: 12px;
+    height: 12px;
+}
+
+.metric-chip.rain svg {
+    color: var(--color-blue);
+}
+
+.metric-chip.wind svg {
+    color: var(--color-purple);
+}
+
+.hazard-badge-pill {
+    font-size: 0.65rem;
     font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 6px;
+    margin-left: auto;
+}
+
+.hazard-badge-pill.active {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--color-red);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.hazard-badge-pill.safe {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--color-green);
+    border: 1px solid rgba(16, 185, 129, 0.2);
 }
 
 .station-meta {

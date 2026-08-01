@@ -16,6 +16,7 @@ let currentTab = 'temp-tab'; // temp-tab or rain-tab
 let map = null;
 let mapMarkers = {};
 let mapPolygons = {};
+let mapSubGrids = {};
 let mapCircles = {};
 let customLocations = [];
 let debounceTimer = null;
@@ -262,10 +263,48 @@ function addMapMarker(plant, isCustom = false) {
     
     mapMarkers[plant.id] = marker;
 
-    // Draw polygon immediately so catchment area is permanently colored by alert level
+    // Draw polygon & sub-grid hazard cells immediately so catchment area is permanently colored by alert level
     if (!isCustom) {
         highlightCatchmentBoundaries(plant, false);
+        drawSubGridHazardCells(plant);
     }
+}
+
+// Render 0.125° x 0.125° hazard grid boxes inside catchment polygons for affected regions
+function drawSubGridHazardCells(plant) {
+    if (mapSubGrids[plant.id]) {
+        mapSubGrids[plant.id].forEach(layer => map.removeLayer(layer));
+    }
+    mapSubGrids[plant.id] = [];
+    
+    if (!plant.affected_regions || plant.affected_regions.length === 0) return;
+    
+    const half = 0.0625; // 0.125 grid cell radius
+    plant.affected_regions.forEach(r => {
+        const bounds = [
+            [r.lat - half, r.lon - half],
+            [r.lat + half, r.lon + half]
+        ];
+        const color = r.level === 'RED' ? COLORS.RED : COLORS.YELLOW;
+        const rect = L.rectangle(bounds, {
+            color: color,
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 0.35,
+            dashArray: '2, 4'
+        }).addTo(map);
+        
+        rect.bindTooltip(
+            `<div style="font-family: var(--font-family); font-size: 0.75rem; padding: 2px 4px;">
+                <strong style="color: ${color};">${r.level} HAZARD REGION</strong><br>
+                <span>Grid Center: ${r.lat.toFixed(3)}°, ${r.lon.toFixed(3)}°</span>
+             </div>`, 
+            { permanent: false, direction: 'top' }
+        );
+        
+        rect.on('click', () => selectPlant(plant.id));
+        mapSubGrids[plant.id].push(rect);
+    });
 }
 
 // Highlight circular area for searched custom coordinates
@@ -398,22 +437,46 @@ function populateStationList(plants) {
             li.classList.add('active');
         }
         
-        let regionsMeta = `Lat: ${plant.lat.toFixed(2)}, Lon: ${plant.lon.toFixed(2)}`;
-        if (plant.affected_regions && plant.affected_regions.length > 0) {
-            regionsMeta = `<div style="color: var(--color-red); font-size: 0.75rem;">Affected: ${plant.affected_regions.map(r => r.lat + ',' + r.lon).join(' | ')}</div>`;
+        const rain24 = plant.summary ? (plant.summary.rain_24h || 0.0) : 0.0;
+        const windMax = plant.summary ? (plant.summary.max_wind || 0.0) : 0.0;
+        const statusClass = plant.alert_level ? plant.alert_level.toLowerCase() : 'green';
+        const affectedCount = plant.affected_regions ? plant.affected_regions.length : 0;
+        
+        let hazardBadgeHtml = '';
+        if (affectedCount > 0) {
+            hazardBadgeHtml = `<span class="hazard-badge-pill active">${affectedCount} Region${affectedCount > 1 ? 's' : ''} Active</span>`;
+        } else {
+            hazardBadgeHtml = `<span class="hazard-badge-pill safe">Normal</span>`;
         }
 
         li.innerHTML = `
-            <div class="station-main">
-                <span class="station-name">${escapeHtml(plant.name)}</span>
-                <span class="station-meta">${regionsMeta}</span>
+            <div class="station-card-content">
+                <div class="station-card-header">
+                    <span class="station-name">${escapeHtml(plant.name)}</span>
+                    <span class="status-badge ${escapeHtml(statusClass)}">${escapeHtml(plant.alert_level)}</span>
+                </div>
+                
+                <div class="station-metrics-row">
+                    <div class="metric-chip rain" title="24h Cumulative Rainfall">
+                        <i data-lucide="cloud-rain"></i>
+                        <span><strong>${rain24.toFixed(1)}</strong> mm</span>
+                    </div>
+                    <div class="metric-chip wind" title="Maximum Expected Wind Speed">
+                        <i data-lucide="wind"></i>
+                        <span><strong>${windMax.toFixed(1)}</strong> m/s</span>
+                    </div>
+                    ${hazardBadgeHtml}
+                </div>
             </div>
-            <span class="status-badge ${escapeHtml(plant.alert_level.toLowerCase())}">${escapeHtml(plant.alert_level)}</span>
         `;
         
         li.addEventListener('click', () => selectPlant(plant.id));
         listContainer.appendChild(li);
     });
+    
+    if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+        lucide.createIcons();
+    }
 }
 
 // Search Filter Input Setup with Coordinate Parsing and Geocoding APIs
@@ -750,16 +813,19 @@ function selectPlant(plantId, panMap = true) {
         drawCustomCircle(plant, true);
     }
     
-    // 3. Pan map left-offset to shift marker out from under the details slide sheet
+    // 3. Zoom / Fly to catchment boundary bounds
     if (panMap && map) {
-        map.setView([plant.lat, plant.lon], 7, { animate: true });
-        
-        const isCollapsed = document.getElementById('sidebar').classList.contains('collapsed');
-        const offsetPx = isCollapsed ? -220 : -140;
-        
-        map.once('moveend', () => {
-            map.panBy([offsetPx, 0], { animate: true, duration: 0.6 });
-        });
+        if (!isCustom && mapPolygons[plantId] && mapPolygons[plantId].length > 0) {
+            const bounds = L.latLngBounds();
+            mapPolygons[plantId].forEach(poly => bounds.extend(poly.getBounds()));
+            if (bounds.isValid()) {
+                map.flyToBounds(bounds, { padding: [60, 60], maxZoom: 12, duration: 1.2 });
+            } else {
+                map.setView([plant.lat, plant.lon], 9, { animate: true });
+            }
+        } else {
+            map.setView([plant.lat, plant.lon], 9, { animate: true });
+        }
         
         if (mapMarkers[plantId]) {
             mapMarkers[plantId].openPopup();
