@@ -78,11 +78,8 @@ function updateDashboardUI(data) {
     document.getElementById('stat-yellow').querySelector('.stat-num').innerText = data.statistics.yellow;
     document.getElementById('stat-green').querySelector('.stat-num').innerText = data.statistics.green;
     
-    // Sort plants: Red first, then Yellow, then Green, then alphabetically by name
+    // Sort plants alphabetically by name
     const sortedPlants = [...data.plants].sort((a, b) => {
-        const priority = { 'RED': 1, 'YELLOW': 2, 'GREEN': 3, 'UNKNOWN': 4 };
-        const statusDiff = priority[a.alert_level] - priority[b.alert_level];
-        if (statusDiff !== 0) return statusDiff;
         return a.name.localeCompare(b.name);
     });
     
@@ -93,12 +90,17 @@ function updateDashboardUI(data) {
         // Update markers if map already exists
         data.plants.forEach(plant => {
             if (mapMarkers[plant.id]) {
+                let affectedRegionsHtml = '';
+                if (plant.affected_regions && plant.affected_regions.length > 0) {
+                    affectedRegionsHtml = '<br><strong>Affected Regions:</strong><br>' + 
+                        plant.affected_regions.map(r => `[${r.lat}, ${r.lon}] (${r.level})`).join('<br>');
+                }
                 let popupText = `
                     <div class="leaflet-popup-title">${escapeHtml(plant.name)}</div>
                     <div class="leaflet-popup-desc">
                         <strong>Status:</strong> ${escapeHtml(plant.alert_level)}<br>
                         <strong>24h Rain:</strong> ${plant.summary.rain_24h || 0.0} mm<br>
-                        <strong>Max Wind:</strong> ${plant.summary.max_wind || 0.0} m/s
+                        <strong>Max Wind:</strong> ${plant.summary.max_wind || 0.0} m/s${affectedRegionsHtml}
                     </div>
                 `;
                 mapMarkers[plant.id].setPopupContent(popupText);
@@ -208,12 +210,18 @@ function addMapMarker(plant, isCustom = false) {
     
     const marker = L.marker([lat, lon], { icon: customIcon }).addTo(map);
     
+    let affectedRegionsHtml = '';
+    if (plant.affected_regions && plant.affected_regions.length > 0) {
+        affectedRegionsHtml = '<br><strong>Affected Regions:</strong><br>' + 
+            plant.affected_regions.map(r => `[${r.lat}, ${r.lon}] (${r.level})`).join('<br>');
+    }
+
     let popupText = `
         <div class="leaflet-popup-title">${escapeHtml(plant.name)} ${isCustom ? '<span style="color: var(--color-blue); font-size: 0.65rem; font-weight: normal; margin-left: 4px;">(Searched)</span>' : ''}</div>
         <div class="leaflet-popup-desc">
             <strong>Status:</strong> ${escapeHtml(status)}<br>
             <strong>24h Rain:</strong> ${plant.summary.rain_24h || 0.0} mm<br>
-            <strong>Max Wind:</strong> ${plant.summary.max_wind || 0.0} m/s
+            <strong>Max Wind:</strong> ${plant.summary.max_wind || 0.0} m/s${affectedRegionsHtml}
         </div>
     `;
     
@@ -244,6 +252,11 @@ function addMapMarker(plant, isCustom = false) {
     });
     
     mapMarkers[plant.id] = marker;
+
+    // Draw polygon immediately so catchment area is permanently colored by alert level
+    if (!isCustom) {
+        highlightCatchmentBoundaries(plant, false);
+    }
 }
 
 // Highlight circular area for searched custom coordinates
@@ -329,11 +342,10 @@ function highlightCatchmentBoundaries(plant, isSelected = false) {
     mapPolygons[plant.id] = polygons;
 }
 
-// Remove boundary polygon from map
+// Remove boundary polygon from map (Now resets style instead of removing)
 function removePolygon(plantId) {
     if (mapPolygons[plantId]) {
-        mapPolygons[plantId].forEach(p => map.removeLayer(p));
-        delete mapPolygons[plantId];
+        mapPolygons[plantId].forEach(p => p.setStyle({ weight: 1.5, fillOpacity: 0.08 }));
     }
 }
 
@@ -361,10 +373,15 @@ function populateStationList(plants) {
             li.classList.add('active');
         }
         
+        let regionsMeta = `Lat: ${plant.lat.toFixed(2)}, Lon: ${plant.lon.toFixed(2)}`;
+        if (plant.affected_regions && plant.affected_regions.length > 0) {
+            regionsMeta = `<div style="color: var(--color-red); font-size: 0.75rem;">Affected: ${plant.affected_regions.map(r => r.lat + ',' + r.lon).join(' | ')}</div>`;
+        }
+
         li.innerHTML = `
             <div class="station-main">
                 <span class="station-name">${escapeHtml(plant.name)}</span>
-                <span class="station-meta">Lat: ${plant.lat.toFixed(2)}, Lon: ${plant.lon.toFixed(2)}</span>
+                <span class="station-meta">${regionsMeta}</span>
             </div>
             <span class="status-badge ${escapeHtml(plant.alert_level.toLowerCase())}">${escapeHtml(plant.alert_level)}</span>
         `;

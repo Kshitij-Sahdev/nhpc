@@ -221,13 +221,20 @@ def parse_kml(kml_path: str) -> List[Dict[str, Any]]:
             centroid_lat = sum(lats) / len(lats)
             centroid_lon = sum(lons) / len(lons)
 
+            grid_points_set = set()
+            for pt in all_points:
+                import imd_ping
+                grid_points_set.add((imd_ping.snap_grid(pt[0]), imd_ping.snap_grid(pt[1])))
+            grid_points = list(grid_points_set)
+
             power_plants.append({
                 "id": len(power_plants) + 1,
                 "name": cleaned,
                 "document": doc_name,
                 "lat": round(centroid_lat, 5),
                 "lon": round(centroid_lon, 5),
-                "boundaries": polygons
+                "boundaries": polygons,
+                "grid_points": grid_points
             })
 
     logger.info("Parsed %d power plant catchments from KML", len(power_plants))
@@ -638,10 +645,41 @@ def main() -> None:
         lat = plant["lat"]
         lon = plant["lon"]
 
-        logger.info("[%d/%d] Fetching forecast for %s (%s, %s)", idx + 1, total, name, lat, lon)
+        grid_points = plant.get("grid_points", [(lat, lon)])
+        logger.info("[%d/%d] Fetching forecast for %s (across %d regions)", idx + 1, total, name, len(grid_points))
         try:
-            forecast_raw = imd_ping.get_forecast(lat, lon)
-            analysis = analyze_forecast(forecast_raw["forecast"], start_ist)
+            worst_alert_level = "GREEN"
+            all_reasons = []
+            max_summary = {}
+            first_forecast_details = None
+            affected_regions = []
+
+            for g_lat, g_lon in grid_points:
+                forecast_raw = imd_ping.get_forecast(g_lat, g_lon)
+                analysis = analyze_forecast(forecast_raw["forecast"], start_ist)
+                
+                if first_forecast_details is None:
+                    first_forecast_details = analysis["details"]
+
+                level = analysis["alert_level"]
+                if level == "RED":
+                    worst_alert_level = "RED"
+                elif level == "YELLOW" and worst_alert_level != "RED":
+                    worst_alert_level = "YELLOW"
+                elif level == "UNKNOWN" and worst_alert_level == "GREEN":
+                    worst_alert_level = "UNKNOWN"
+                
+                if level in ["RED", "YELLOW"]:
+                    affected_regions.append({"lat": g_lat, "lon": g_lon, "level": level})
+
+                for reason in analysis["reasons"]:
+                    all_reasons.append(f"[Region: {g_lat}, {g_lon}] {reason}")
+                
+                for k, v in analysis["summary"].items():
+                    if k not in max_summary:
+                        max_summary[k] = v
+                    else:
+                        max_summary[k] = max(max_summary[k], v)
 
             plant_result = {
                 "id": plant["id"],
@@ -649,10 +687,11 @@ def main() -> None:
                 "lat": lat,
                 "lon": lon,
                 "boundaries": plant["boundaries"],
-                "alert_level": analysis["alert_level"],
-                "reasons": analysis["reasons"],
-                "summary": analysis["summary"],
-                "forecast": analysis["details"]
+                "alert_level": worst_alert_level,
+                "reasons": all_reasons,
+                "summary": max_summary,
+                "forecast": first_forecast_details,
+                "affected_regions": affected_regions
             }
             results.append(plant_result)
 
