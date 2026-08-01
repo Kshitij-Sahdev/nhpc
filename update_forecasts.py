@@ -654,32 +654,43 @@ def main() -> None:
             first_forecast_details = None
             affected_regions = []
 
-            for g_lat, g_lon in grid_points:
-                forecast_raw = imd_ping.get_forecast(g_lat, g_lon)
-                analysis = analyze_forecast(forecast_raw["forecast"], start_ist)
-                
-                if first_forecast_details is None:
-                    first_forecast_details = analysis["details"]
+            import concurrent.futures
+            
+            def fetch_and_analyze(g_lat, g_lon):
+                f_raw = imd_ping.get_forecast(g_lat, g_lon)
+                return g_lat, g_lon, analyze_forecast(f_raw["forecast"], start_ist)
 
-                level = analysis["alert_level"]
-                if level == "RED":
-                    worst_alert_level = "RED"
-                elif level == "YELLOW" and worst_alert_level != "RED":
-                    worst_alert_level = "YELLOW"
-                elif level == "UNKNOWN" and worst_alert_level == "GREEN":
-                    worst_alert_level = "UNKNOWN"
-                
-                if level in ["RED", "YELLOW"]:
-                    affected_regions.append({"lat": g_lat, "lon": g_lon, "level": level})
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                futures = [executor.submit(fetch_and_analyze, g_lat, g_lon) for g_lat, g_lon in grid_points]
+                for future in concurrent.futures.as_completed(futures):
+                    try:
+                        g_lat, g_lon, analysis = future.result()
+                        
+                        if first_forecast_details is None:
+                            first_forecast_details = analysis["details"]
 
-                for reason in analysis["reasons"]:
-                    all_reasons.append(f"[Region: {g_lat}, {g_lon}] {reason}")
-                
-                for k, v in analysis["summary"].items():
-                    if k not in max_summary:
-                        max_summary[k] = v
-                    else:
-                        max_summary[k] = max(max_summary[k], v)
+                        level = analysis["alert_level"]
+                        if level == "RED":
+                            worst_alert_level = "RED"
+                        elif level == "YELLOW" and worst_alert_level != "RED":
+                            worst_alert_level = "YELLOW"
+                        elif level == "UNKNOWN" and worst_alert_level == "GREEN":
+                            worst_alert_level = "UNKNOWN"
+                        
+                        if level in ["RED", "YELLOW"]:
+                            affected_regions.append({"lat": g_lat, "lon": g_lon, "level": level})
+
+                        for reason in analysis["reasons"]:
+                            all_reasons.append(f"[Region: {g_lat}, {g_lon}] {reason}")
+                        
+                        for k, v in analysis["summary"].items():
+                            if k not in max_summary:
+                                max_summary[k] = v
+                            else:
+                                max_summary[k] = max(max_summary[k], v)
+                    except Exception as e:
+                        logger.error("Error fetching %s, %s: %s", g_lat, g_lon, e)
+                        continue
 
             plant_result = {
                 "id": plant["id"],

@@ -84,8 +84,11 @@ function updateDashboardUI(data) {
     document.getElementById('stat-yellow').querySelector('.stat-num').innerText = data.statistics.yellow;
     document.getElementById('stat-green').querySelector('.stat-num').innerText = data.statistics.green;
     
-    // Sort plants alphabetically by name
+    // Sort plants: Red first, then Yellow, then Green, then alphabetically by name
     const sortedPlants = [...data.plants].sort((a, b) => {
+        const priority = { 'RED': 1, 'YELLOW': 2, 'GREEN': 3, 'UNKNOWN': 4 };
+        const statusDiff = priority[a.alert_level] - priority[b.alert_level];
+        if (statusDiff !== 0) return statusDiff;
         return a.name.localeCompare(b.name);
     });
     
@@ -329,15 +332,22 @@ function highlightCatchmentBoundaries(plant, isSelected = false) {
     if (!plant.boundaries || plant.boundaries.length === 0) return;
     
     const status = plant.alert_level;
+    const isGreen = status === 'GREEN';
     const color = status === 'RED' ? COLORS.RED : (status === 'YELLOW' ? COLORS.YELLOW : COLORS.GREEN);
     
+    // Hide completely if GREEN and not selected
+    const polyWeight = isSelected ? 3.5 : (isGreen ? 0 : 1.5);
+    const polyFillOpacity = isSelected ? 0.25 : (isGreen ? 0 : 0.08);
+    const polyOpacity = isSelected ? 1 : (isGreen ? 0 : 1);
+
     const polygons = [];
     plant.boundaries.forEach(coords => {
         const poly = L.polygon(coords, {
             color: color,
-            weight: isSelected ? 3.5 : 1.5,
+            weight: polyWeight,
+            opacity: polyOpacity,
             fillColor: color,
-            fillOpacity: isSelected ? 0.25 : 0.08,
+            fillOpacity: polyFillOpacity,
             dashArray: isSelected ? '' : '3, 5'
         }).addTo(map);
         
@@ -351,7 +361,16 @@ function highlightCatchmentBoundaries(plant, isSelected = false) {
 // Remove boundary polygon from map (Now resets style instead of removing)
 function removePolygon(plantId) {
     if (mapPolygons[plantId]) {
-        mapPolygons[plantId].forEach(p => p.setStyle({ weight: 1.5, fillOpacity: 0.08 }));
+        mapPolygons[plantId].forEach(p => {
+            // Check if it's green to make it invisible again
+            const color = p.options.color;
+            const isGreen = color === COLORS.GREEN;
+            p.setStyle({ 
+                weight: isGreen ? 0 : 1.5, 
+                opacity: isGreen ? 0 : 1,
+                fillOpacity: isGreen ? 0 : 0.08 
+            });
+        });
     }
 }
 
