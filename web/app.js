@@ -49,8 +49,14 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Check if data is loaded
     if (!window.FORECAST_DATA) {
-        console.error("Forecast data (forecast_data.js) is missing or failed to load.");
-        alert("Error: Weather forecast data could not be found. Please ensure update_forecasts.py was run.");
+        console.warn("Forecast data is not ready yet. Entering loading state.");
+        
+        // Show loading in UI
+        const timestampEl = document.getElementById('update-timestamp');
+        if(timestampEl) timestampEl.innerText = 'Initializing data... (May take 10 mins)';
+        
+        // Still start polling so that when the scraper finishes, the dashboard loads
+        startAutoPolling();
         return;
     }
     
