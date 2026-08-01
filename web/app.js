@@ -953,15 +953,12 @@ function updateDashboardWarningUI(plant) {
                 detailsContainer.classList.add('flashing-yellow');
             }
         }
+        
+        startSirenSound();
     } else {
         if (callout) {
             callout.classList.add('hidden');
         }
-    }
-        
-        startSirenSound();
-    } else {
-        callout.classList.add('hidden');
         stopSirenSound();
     }
 }
