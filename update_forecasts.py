@@ -82,13 +82,30 @@ def clean_name(pm_name: Optional[str], doc_name: str) -> str:
         raw_name = doc_clean
 
     mapping = {
-        "TanakpurCorrected": "Tanakpur",
-        "SubLowdam": "Subansiri Lower",
-        "tld4": "Teesta Low Dam IV",
-        "nbpdam": "Nimoo Bazgo",
-        "ChutakPS": "Chutak",
-        "Uri_I": "Uri I",
-        "Uri_II": "Uri II"
+        "TanakpurCorrected": "Tanakpur HEP",
+        "Tanakpur": "Tanakpur HEP",
+        "SubLowdam": "Subansiri Lower HEP",
+        "Subansiri Lower": "Subansiri Lower HEP",
+        "tld4": "Teesta Low Dam IV HEP",
+        "Teesta Low Dam IV": "Teesta Low Dam IV HEP",
+        "nbpdam": "Nimoo Bazgo HEP",
+        "Nimoo Bazgo": "Nimoo Bazgo HEP",
+        "ChutakPS": "Chutak Power Station",
+        "Chutak": "Chutak Power Station",
+        "Uri_I": "Uri-I Power Station",
+        "Uri I": "Uri-I Power Station",
+        "Uri_II": "Uri-II Power Station",
+        "Uri II": "Uri-II Power Station",
+        "Baira": "Baira Siul Power Station",
+        "Salal": "Salal Power Station",
+        "Chamera-I": "Chamera-I HEP",
+        "Chamera-II": "Chamera-II HEP",
+        "Chamera-III": "Chamera-III HEP",
+        "Parbati-II": "Parbati-II HEP",
+        "Parbati-III": "Parbati-III HEP",
+        "Kishanganga": "Kishanganga HEP",
+        "Dibang": "Dibang Multipurpose Project",
+        "Ranjit Sagar": "Ranjit Sagar Hydro Project"
     }
 
     if raw_name in mapping:
@@ -101,9 +118,9 @@ def clean_name(pm_name: Optional[str], doc_name: str) -> str:
         raw_name = doc_clean
 
     # Append (Project) or (Catchment) to distinguish duplicates
-    if doc_name.endswith('.kml') and raw_name in ["Kishanganga", "Dibang"]:
+    if doc_name.endswith('.kml') and raw_name in ["Kishanganga HEP", "Dibang Multipurpose Project"]:
         raw_name = f"{raw_name} (Project)"
-    elif doc_name.endswith('.shp') and raw_name in ["Kishanganga"]:
+    elif doc_name.endswith('.shp') and raw_name in ["Kishanganga HEP"]:
         raw_name = f"{raw_name} (Catchment)"
 
     raw_name = raw_name.replace("_", " ")

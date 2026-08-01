@@ -832,9 +832,12 @@ function selectPlant(plantId, panMap = true) {
         }
     }
     
-    // 4. Slide-in Dashboard Sheet
-    const dashboard = document.getElementById('dashboard-details');
-    dashboard.classList.add('active');
+    // 4. Reveal Details Container in Right Panel
+    const detailsContainer = document.getElementById('selected-details-container');
+    if (detailsContainer) {
+        detailsContainer.classList.remove('hidden');
+        detailsContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
     
     // 5. Update content
     document.getElementById('selected-plant-name').innerText = plant.name;
@@ -854,8 +857,10 @@ function selectPlant(plantId, panMap = true) {
 
 // Close/Dismiss details panel
 function closeDashboard() {
-    const dashboard = document.getElementById('dashboard-details');
-    dashboard.classList.remove('active');
+    const detailsContainer = document.getElementById('selected-details-container');
+    if (detailsContainer) {
+        detailsContainer.classList.add('hidden');
+    }
     
     // Deselect active list item
     document.querySelectorAll('.station-item').forEach(item => {
@@ -903,35 +908,56 @@ function toggleSidebar() {
 
 // Update Warning states
 function updateDashboardWarningUI(plant) {
-    const detailsContainer = document.getElementById('dashboard-details');
+    const detailsContainer = document.getElementById('selected-details-container') || document.querySelector('.panel-section');
     const statusBanner = document.getElementById('status-banner');
     const statusText = document.getElementById('status-text');
     const statusIcon = document.getElementById('status-icon');
     
-    detailsContainer.classList.remove('flashing-red', 'flashing-yellow');
+    if (detailsContainer) {
+        detailsContainer.classList.remove('flashing-red', 'flashing-yellow');
+    }
     
-    statusBanner.className = 'alert-status-banner ' + plant.alert_level.toLowerCase();
-    statusText.innerText = plant.alert_level === 'GREEN' ? 'SAFE STATUS' : (plant.alert_level === 'YELLOW' ? 'WATCH ACTIVE' : 'CRITICAL ALERT');
-    statusIcon.setAttribute('data-lucide', plant.alert_level === 'GREEN' ? 'check-circle' : 'alert-triangle');
+    if (statusBanner) {
+        statusBanner.className = 'alert-status-banner ' + plant.alert_level.toLowerCase();
+    }
+    if (statusText) {
+        statusText.innerText = plant.alert_level === 'GREEN' ? 'SAFE STATUS' : (plant.alert_level === 'YELLOW' ? 'WATCH ACTIVE' : 'CRITICAL ALERT');
+    }
+    if (statusIcon) {
+        statusIcon.setAttribute('data-lucide', plant.alert_level === 'GREEN' ? 'check-circle' : 'alert-triangle');
+    }
     
     const callout = document.getElementById('warning-callout');
     const warningList = document.getElementById('warning-reasons-list');
-    warningList.innerHTML = '';
+    if (warningList) {
+        warningList.innerHTML = '';
+    }
     
     if (plant.alert_level !== 'GREEN' && plant.reasons && plant.reasons.length > 0) {
-        callout.className = 'warning-callout ' + (plant.alert_level === 'RED' ? 'red-callout' : 'yellow-callout');
-        callout.classList.remove('hidden');
-        plant.reasons.forEach(reason => {
-            const li = document.createElement('li');
-            li.innerText = reason;
-            warningList.appendChild(li);
-        });
-        
-        if (plant.alert_level === 'RED') {
-            detailsContainer.classList.add('flashing-red');
-        } else if (plant.alert_level === 'YELLOW') {
-            detailsContainer.classList.add('flashing-yellow');
+        if (callout) {
+            callout.className = 'warning-callout ' + (plant.alert_level === 'RED' ? 'red-callout' : 'yellow-callout');
+            callout.classList.remove('hidden');
         }
+        if (warningList) {
+            plant.reasons.forEach(reason => {
+                const li = document.createElement('li');
+                li.innerText = reason;
+                warningList.appendChild(li);
+            });
+        }
+        
+        if (detailsContainer) {
+            if (plant.alert_level === 'RED') {
+                detailsContainer.classList.add('flashing-red');
+            } else if (plant.alert_level === 'YELLOW') {
+                detailsContainer.classList.add('flashing-yellow');
+            }
+        }
+    } else {
+        if (callout) {
+            callout.classList.add('hidden');
+        }
+    }
         
         startSirenSound();
     } else {

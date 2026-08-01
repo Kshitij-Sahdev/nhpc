@@ -29,27 +29,35 @@
 </head>
 <body class="dark-theme">
     
-    <!-- Fullscreen Map Background -->
-    <div id="map"></div>
-    
-    <div class="app-overlay">
+    <!-- Split Screen Layout: Left 50% Map, Right 50% Control Panel -->
+    <div class="split-layout">
         
-        <!-- Sidebar - Floating Left -->
-        <aside class="sidebar" id="sidebar">
-            <header class="sidebar-header">
+        <!-- Left Side: Clean Map View -->
+        <div class="map-section">
+            <div id="map"></div>
+        </div>
+        
+        <!-- Right Side: Control Panel & Hydro Project Station Cards -->
+        <div class="panel-section">
+            
+            <!-- Panel Header -->
+            <header class="panel-header">
                 <div class="logo-container">
                     <i data-lucide="shield-alert" class="logo-icon alert-red-text animate-pulse"></i>
                     <div class="logo-text">
-                        <h1>NHPC Warning</h1>
-                        <span class="sub-title">Live Weather Risk Control</span>
+                        <h1>NHPC Warning Terminal</h1>
+                        <span class="sub-title">Live Weather Risk & Dam Safety Control</span>
                     </div>
                 </div>
-                <button class="icon-btn toggle-sidebar-btn" onclick="toggleSidebar()" title="Collapse Sidebar">
-                    <i data-lucide="chevron-left" id="sidebar-toggle-icon"></i>
-                </button>
+                <div class="header-right">
+                    <div class="update-time">
+                        <i data-lucide="clock"></i>
+                        <span id="update-timestamp">Fetching...</span>
+                    </div>
+                </div>
             </header>
             
-            <!-- Statistics Horizontal Bar -->
+            <!-- Statistics Bar -->
             <section class="stats-bar">
                 <div class="stat-pill red" id="stat-red" title="Critical warning active">
                     <span class="dot"></span>
@@ -68,10 +76,10 @@
                 </div>
             </section>
             
-            <!-- Search Input -->
+            <!-- Search Container -->
             <div class="search-container">
                 <i data-lucide="search" class="search-icon"></i>
-                <input type="text" id="station-search" placeholder="Search catchments or enter lat, lon...">
+                <input type="text" id="station-search" placeholder="Search Hydro Project names or coordinates...">
                 <button class="clear-search-btn hidden" id="clear-search-btn" title="Clear Search">
                     <i data-lucide="x"></i>
                 </button>
@@ -79,64 +87,15 @@
                     <!-- Dynamic suggestion items inserted here -->
                 </div>
             </div>
-            
-            <!-- Station List -->
-            <div class="station-list-container">
-                <!-- Custom/Searched Locations Section -->
-                <div class="station-group hidden" id="custom-stations-group">
-                    <h3 class="group-header">
-                        <span>Searched Locations</span>
-                        <button class="clear-custom-btn" id="clear-custom-btn" title="Clear all custom locations">Clear All</button>
-                    </h3>
-                    <ul class="station-list" id="custom-station-list">
-                        <!-- Dynamic custom stations inserted here -->
-                    </ul>
-                </div>
-                
-                <!-- Official NHPC Catchments Section -->
-                <div class="station-group" id="official-stations-group">
-                    <h3 class="group-header">Official Catchments</h3>
-                    <ul class="station-list" id="station-list">
-                        <!-- Dynamic station items inserted here -->
-                    </ul>
-                </div>
-            </div>
-            
-            <!-- Footer -->
-            <footer class="sidebar-footer">
-                <div class="update-time">
-                    <i data-lucide="clock"></i>
-                    <span>Updated: <span id="update-timestamp">Fetching...</span></span>
-                </div>
-            </footer>
-        </aside>
-        
-        <!-- Sidebar Re-open Button (Hidden when sidebar is open) -->
-        <button class="floating-btn open-sidebar-btn hidden" id="open-sidebar-btn" onclick="toggleSidebar()" title="Show Sidebar">
-            <i data-lucide="menu"></i>
-        </button>
-        
-        <!-- Details Dashboard - Floating Right (Sliding Panel) -->
-        <section class="dashboard-details" id="dashboard-details">
-            
-            <!-- Close Button for Mobile/Widescreen dismissal -->
-            <button class="icon-btn close-dashboard-btn" onclick="closeDashboard()" title="Close Details">
-                <i data-lucide="x"></i>
-            </button>
-            
-            <!-- Main Dashboard Content -->
-            <div class="active-dashboard" id="active-dashboard">
-                
-                <!-- Station Header -->
-                <header class="dashboard-header">
-                    <div class="station-info">
-                        <h2 id="selected-plant-name">Tanakpur</h2>
-                        <div class="coords-badge">
-                            <i data-lucide="map-pin"></i>
-                            <span>Lat: <strong id="selected-lat">0.00</strong>, Lon: <strong id="selected-lon">0.00</strong></span>
-                        </div>
+
+            <!-- Selected Plant Active Hazard Details (Rendered directly in right panel) -->
+            <div class="selected-details-container hidden" id="selected-details-container">
+                <header class="selected-header">
+                    <div>
+                        <h2 id="selected-plant-name">Hydroelectric Power Project</h2>
+                        <span class="coords-text">Lat: <strong id="selected-lat">0.00</strong>, Lon: <strong id="selected-lon">0.00</strong></span>
                     </div>
-                    <div class="header-controls">
+                    <div class="selected-controls">
                         <button id="siren-toggle" class="control-btn muted" onclick="toggleSirenMute()">
                             <i data-lucide="volume-x" id="siren-icon"></i>
                             <span id="siren-text">Mute</span>
@@ -145,10 +104,13 @@
                             <i data-lucide="info" id="status-icon"></i>
                             <span id="status-text">SAFE</span>
                         </div>
+                        <button class="icon-btn close-details-btn" onclick="closeDashboard()" title="Close Details">
+                            <i data-lucide="x"></i>
+                        </button>
                     </div>
                 </header>
                 
-                <!-- Warning Details Banner (if active) -->
+                <!-- Warning Details Callout -->
                 <div class="warning-callout hidden" id="warning-callout">
                     <div class="callout-header">
                         <i data-lucide="alert-triangle"></i>
@@ -204,14 +166,36 @@
                         <canvas id="forecastChart"></canvas>
                     </div>
                 </div>
-                
             </div>
-        </section>
+            
+            <!-- Hydroelectric Power Projects List -->
+            <div class="station-list-container">
+                <!-- Custom/Searched Locations Section -->
+                <div class="station-group hidden" id="custom-stations-group">
+                    <h3 class="group-header">
+                        <span>Searched Locations</span>
+                        <button class="clear-custom-btn" id="clear-custom-btn" title="Clear all custom locations">Clear All</button>
+                    </h3>
+                    <ul class="station-list" id="custom-station-list">
+                        <!-- Dynamic custom stations inserted here -->
+                    </ul>
+                </div>
+                
+                <!-- Official NHPC Catchments Section -->
+                <div class="station-group" id="official-stations-group">
+                    <h3 class="group-header">Hydroelectric Power Projects</h3>
+                    <ul class="station-list" id="station-list">
+                        <!-- Dynamic station items inserted here -->
+                    </ul>
+                </div>
+            </div>
+            
+        </div>
     </div>
 
     <!-- Load Local Forecast Data -->
     <script src="forecast_data.js"></script>
     <!-- Load UI Application Logic -->
-    <script src="app.js?v=2.0"></script>
+    <script src="app.js?v=3.0"></script>
 </body>
 </html>

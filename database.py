@@ -229,7 +229,8 @@ def upsert_plants(plants: List[Dict[str, Any]], db_path: Optional[str] = None) -
             cursor.execute("""
             INSERT INTO plants (id, name, document, lat, lon, boundaries_json, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(name) DO UPDATE SET
+            ON CONFLICT(id) DO UPDATE SET
+                name=excluded.name,
                 document=excluded.document,
                 lat=excluded.lat,
                 lon=excluded.lon,
