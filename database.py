@@ -187,6 +187,73 @@ def init_db(db_path: Optional[str] = None) -> None:
     );
     """)
 
+    # 6. NDMA Alerts table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS ndma_alerts (
+        alert_id TEXT PRIMARY KEY,
+        identifier TEXT,
+        event TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        urgency TEXT,
+        certainty TEXT,
+        headline TEXT,
+        description TEXT,
+        area_description TEXT,
+        effective TEXT,
+        expires TEXT,
+        polygons_json TEXT,
+        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # 7. Gauge & Discharge (GND) River Monitoring Sites table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS gnd_sites (
+        site_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        site_name TEXT NOT NULL,
+        project_id TEXT,
+        lat REAL NOT NULL,
+        lng REAL NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # 8. Integrated Project & Catchment Warnings table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS project_warnings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        site_type TEXT NOT NULL,
+        site_name TEXT NOT NULL,
+        project_id TEXT,
+        alert_id TEXT NOT NULL,
+        event TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        warning_type TEXT NOT NULL,
+        distance_km REAL DEFAULT 0.0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # 9. System Settings table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    """)
+
+    # Seed default settings if empty
+    cursor.execute("SELECT COUNT(*) FROM settings;")
+    if cursor.fetchone()[0] == 0:
+        cursor.executemany("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?);", [
+            ("warning_distance_km", "25"),
+            ("scheduler_minutes", "15"),
+            ("severity_extreme", "#d20f39"),
+            ("severity_severe", "#fe640b"),
+            ("severity_moderate", "#df8e1d"),
+            ("severity_minor", "#40a02b"),
+        ])
+
     # Indexes for high performance querying
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_plant_forecasts_run ON plant_forecasts(forecast_run_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_plant_forecasts_name ON plant_forecasts(plant_name);")
@@ -194,6 +261,8 @@ def init_db(db_path: Optional[str] = None) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_alert_history_plant ON alert_history(plant_name);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_alert_history_triggered ON alert_history(triggered_at);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_forecast_runs_fetched ON forecast_runs(fetched_at);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ndma_alerts_fetched ON ndma_alerts(fetched_at);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_project_warnings_created ON project_warnings(created_at);")
 
     conn.commit()
     conn.close()
@@ -206,6 +275,37 @@ def init_db(db_path: Optional[str] = None) -> None:
 # ---------------------------------------------------------------------------
 # Plant Operations
 # ---------------------------------------------------------------------------
+
+VERIFIED_COORDS = {
+    "Tanakpur HEP": (29.0725, 80.1189),
+    "Subansiri Lower HEP": (27.5536, 94.2586),
+    "Teesta Low Dam IV HEP": (26.9642, 88.4722),
+    "Kishanganga HEP (Project)": (34.6111, 74.6733),
+    "Dibang Multipurpose Project (Project)": (28.2250, 95.7720),
+    "Nimoo Bazgo HEP": (34.2153, 77.1853),
+    "Chamera-I HEP": (32.5966, 75.9857),
+    "Ranjit Sagar Hydro Project": (32.4410, 75.7280),
+    "Chamera-III HEP": (32.4598, 76.2443),
+    "Chamera-II HEP": (32.4734, 76.2552),
+    "Churi G&D": (32.4596, 76.3626),
+    "Baloo G&D": (32.5450, 76.2108),
+    "Baira Siul Power Station": (32.8063, 76.1418),
+    "Bhaledh": (32.7114, 76.3283),
+    "Siul": (32.8242, 75.9232),
+    "Surangani G&D": (32.7255, 76.1137),
+    "Chutak Power Station": (34.4591, 76.0746),
+    "Dibang Catchment area": (28.5233, 95.8253),
+    "Kishanganga HEP (Catchment)": (34.6107, 74.8847),
+    "Uri-I Power Station": (34.1450, 74.0450),
+    "Uri-II Power Station": (34.0921, 74.0318),
+    "Salal Power Station": (33.1378, 74.8044),
+    "Parbati-III HEP": (31.7398, 77.2576),
+    "Parbati-II HEP": (31.7836, 77.3275),
+    "Jiwa": (31.8653, 77.4779),
+    "Jigrai": (31.9458, 77.4617),
+    "Hurla": (31.8980, 77.3876)
+}
+
 
 def upsert_plants(plants: List[Dict[str, Any]], db_path: Optional[str] = None) -> None:
     """Inserts or updates plant metadata in the database.
@@ -224,6 +324,8 @@ def upsert_plants(plants: List[Dict[str, Any]], db_path: Optional[str] = None) -
             document = p.get("document", "")
             lat = p.get("lat")
             lon = p.get("lon")
+            if name in VERIFIED_COORDS:
+                lat, lon = VERIFIED_COORDS[name]
             boundaries_json = json.dumps(p.get("boundaries", []))
 
             cursor.execute("""
@@ -290,6 +392,12 @@ def record_forecast_run(
         # Insert Plant Forecasts
         for r in plants_results:
             summary = r.get("summary", {})
+            name = r.get("name", "")
+            lat = r.get("lat")
+            lon = r.get("lon")
+            if name in VERIFIED_COORDS:
+                lat, lon = VERIFIED_COORDS[name]
+
             cursor.execute("""
             INSERT INTO plant_forecasts (
                 forecast_run_id, plant_id, plant_name, lat, lon, alert_level,
@@ -299,9 +407,9 @@ def record_forecast_run(
             """, (
                 run_id,
                 str(r.get("id")),
-                r.get("name"),
-                r.get("lat"),
-                r.get("lon"),
+                name,
+                lat,
+                lon,
                 r.get("alert_level"),
                 summary.get("rain_24h", 0.0),
                 summary.get("rain_48h", 0.0),
@@ -432,9 +540,18 @@ def get_latest_forecast_run(db_path: Optional[str] = None) -> Optional[Dict[str,
     elapsed = time.monotonic() - start
     DB_QUERY_DURATION.labels(operation="get_latest_forecast_run").observe(elapsed)
 
+    res_forecasts = []
+    for f in forecasts:
+        item = dict(f)
+        if item.get("plant_name") in VERIFIED_COORDS:
+            v_lat, v_lon = VERIFIED_COORDS[item["plant_name"]]
+            item["lat"] = v_lat
+            item["lon"] = v_lon
+        res_forecasts.append(item)
+
     return {
         "run": dict(run),
-        "forecasts": [dict(f) for f in forecasts]
+        "forecasts": res_forecasts
     }
 
 
@@ -562,6 +679,118 @@ def get_database_stats(db_path: Optional[str] = None) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# NDMA Alerts & Settings Operations
+# ---------------------------------------------------------------------------
+
+def save_ndma_alerts(alerts: List[Dict[str, Any]], db_path: Optional[str] = None) -> None:
+    """Saves or updates NDMA CAP alerts in the database."""
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        for a in alerts:
+            cursor.execute("""
+            INSERT INTO ndma_alerts (
+                alert_id, identifier, event, severity, urgency, certainty,
+                headline, description, area_description, effective, expires, polygons_json, fetched_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(alert_id) DO UPDATE SET
+                event=excluded.event,
+                severity=excluded.severity,
+                headline=excluded.headline,
+                description=excluded.description,
+                area_description=excluded.area_description,
+                polygons_json=excluded.polygons_json,
+                fetched_at=CURRENT_TIMESTAMP;
+            """, (
+                a.get("alert_id"),
+                a.get("identifier"),
+                a.get("event"),
+                a.get("severity"),
+                a.get("urgency"),
+                a.get("certainty"),
+                a.get("headline"),
+                a.get("description"),
+                a.get("area_description"),
+                a.get("effective"),
+                a.get("expires"),
+                json.dumps(a.get("polygons", []))
+            ))
+
+
+def get_active_ndma_alerts(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetches active NDMA alerts."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM ndma_alerts ORDER BY fetched_at DESC LIMIT 50;")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    result = []
+    for r in rows:
+        item = dict(r)
+        if item.get("polygons_json"):
+            try:
+                item["polygons"] = json.loads(item["polygons_json"])
+            except Exception:
+                item["polygons"] = []
+        else:
+            item["polygons"] = []
+        result.append(item)
+    return result
+
+
+def save_project_warnings(warnings: List[Dict[str, Any]], db_path: Optional[str] = None) -> None:
+    """Saves generated proximity/catchment warnings."""
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM project_warnings;") # Clear old active warnings
+        for w in warnings:
+            cursor.execute("""
+            INSERT INTO project_warnings (
+                site_type, site_name, project_id, alert_id, event, severity, warning_type, distance_km
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            """, (
+                w.get("site_type", "PROJECT"),
+                w.get("site_name"),
+                str(w.get("project_id", "")),
+                w.get("alert_id"),
+                w.get("event"),
+                w.get("severity"),
+                w.get("warning_type"),
+                w.get("distance_km", 0.0)
+            ))
+
+
+def get_active_project_warnings(db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Fetches active project & catchment warnings."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM project_warnings ORDER BY distance_km ASC;")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_system_settings(db_path: Optional[str] = None) -> Dict[str, str]:
+    """Fetches all system settings as key-value dictionary."""
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT key, value FROM settings;")
+    rows = cursor.fetchall()
+    conn.close()
+    return {r["key"]: r["value"] for r in rows}
+
+
+def update_system_setting(key: str, value: str, db_path: Optional[str] = None) -> None:
+    """Updates a system setting key."""
+    with get_db(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        INSERT INTO settings (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value=excluded.value;
+        """, (key, str(value)))
+
+
+# ---------------------------------------------------------------------------
 # Standalone Execution
 # ---------------------------------------------------------------------------
 
@@ -569,3 +798,4 @@ if __name__ == "__main__":
     from log import setup_logging
     setup_logging()
     init_db()
+

@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+
+{% block title %}NHPC Catchment Emergency Warning Terminal{% endblock %}
+
+{% block content %}
+<div class="catchment-app-container">
+    <!-- Top Catchment Dashboard Status Cards (Interactive Filter Buttons) -->
+    <section class="catchment-top-bar">
+        <div class="catchment-stat-card card-total" onclick="setRiskFilter('ALL')" title="Filter: Show All Catchments">
+            <div class="card-icon"><i data-lucide="layers"></i></div>
+            <div class="card-data">
+                <span class="card-num" id="stat-total-catchments">{{ catchment_summary.total_catchments }}</span>
+                <span class="card-title">Total Catchments</span>
+            </div>
+        </div>
+        <div class="catchment-stat-card card-normal" onclick="setRiskFilter('Normal')" title="Filter: Show Normal Risk">
+            <div class="card-icon"><i data-lucide="shield-check"></i></div>
+            <div class="card-data">
+                <span class="card-num" id="stat-normal-count">{{ catchment_summary.normal }}</span>
+                <span class="card-title">Normal (Blue)</span>
+            </div>
+        </div>
+        <div class="catchment-stat-card card-watch" onclick="setRiskFilter('Watch')" title="Filter: Show Watch Risk">
+            <div class="card-icon"><i data-lucide="eye"></i></div>
+            <div class="card-data">
+                <span class="card-num" id="stat-watch-count">{{ catchment_summary.watch }}</span>
+                <span class="card-title">Watch (Yellow)</span>
+            </div>
+        </div>
+        <div class="catchment-stat-card card-warning" onclick="setRiskFilter('Warning')" title="Filter: Show Warning Risk">
+            <div class="card-icon"><i data-lucide="alert-triangle"></i></div>
+            <div class="card-data">
+                <span class="card-num" id="stat-warning-count">{{ catchment_summary.warning }}</span>
+                <span class="card-title">Warning (Orange)</span>
+            </div>
+        </div>
+        <div class="catchment-stat-card card-severe" onclick="setRiskFilter('Severe')" title="Filter: Show Severe Risk">
+            <div class="card-icon"><i data-lucide="alert-octagon"></i></div>
+            <div class="card-data">
+                <span class="card-num" id="stat-severe-count">{{ catchment_summary.severe }}</span>
+                <span class="card-title">Severe (Red)</span>
+            </div>
+        </div>
+        <div class="catchment-stat-card card-projects" onclick="setRiskFilter('AFFECTED')" title="Filter: Show Affected Projects">
+            <div class="card-icon"><i data-lucide="zap"></i></div>
+            <div class="card-data">
+                <span class="card-num" id="stat-projects-affected">{{ catchment_summary.projects_affected }}</span>
+                <span class="card-title">Projects Affected</span>
+            </div>
+        </div>
+        <div class="catchment-stat-card card-districts" onclick="setRiskFilter('AFFECTED')" title="Filter: Show Affected Districts">
+            <div class="card-icon"><i data-lucide="map-pin"></i></div>
+            <div class="card-data">
+                <span class="card-num" id="stat-districts-affected">{{ catchment_summary.districts_affected }}</span>
+                <span class="card-title">Districts Affected</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Workspace (Left Merged Sidebar + Right Map Canvas) -->
+    <div class="catchment-workspace">
+        <!-- Unified Left Sidebar Container -->
+        <aside class="catchment-nav-sidebar" id="catchment-nav-sidebar">
+            
+            <!-- VIEW A: CATCHMENTS & ALERTS LIST VIEW -->
+            <div class="sidebar-view" id="sidebar-view-list">
+                <!-- Search Input -->
+                <div class="search-box">
+                    <i data-lucide="search" class="search-icon"></i>
+                    <input type="text" id="catchment-search-input" placeholder="Search catchments, river basins, or projects..." oninput="filterCatchmentList()">
+                </div>
+
+                <!-- Risk Filter Pills -->
+                <div class="risk-filter-pills">
+                    <button class="pill-btn active" data-risk="ALL" onclick="setRiskFilter('ALL')">All ({{ catchment_summary.total_catchments }})</button>
+                    <button class="pill-btn severe" data-risk="Severe" onclick="setRiskFilter('Severe')">Severe</button>
+                    <button class="pill-btn warning" data-risk="Warning" onclick="setRiskFilter('Warning')">Warning</button>
+                    <button class="pill-btn watch" data-risk="Watch" onclick="setRiskFilter('Watch')">Watch</button>
+                    <button class="pill-btn normal" data-risk="Normal" onclick="setRiskFilter('Normal')">Normal</button>
+                </div>
+
+                <!-- Catchment & Alert Tab Switches -->
+                <div class="sidebar-tab-switches">
+                    <button class="tab-btn active" id="tab-btn-catchments" onclick="switchSidebarTab('catchments')">
+                        <i data-lucide="layers"></i> Catchments List
+                    </button>
+                    <button class="tab-btn" id="tab-btn-alerts" onclick="switchSidebarTab('alerts')">
+                        <i data-lucide="alert-triangle"></i> Landslides & NDMA Alerts
+                    </button>
+                </div>
+
+                <!-- Catchments List Tab Content -->
+                <div class="tab-content active" id="tab-content-catchments">
+                    <ul class="catchment-item-list" id="catchment-item-list">
+                        {% for c in catchments %}
+                        <li class="catchment-card risk-{{ c.risk_level | lower }}" id="list-item-{{ c.catchment_id }}" onclick="selectCatchment('{{ c.catchment_name }}', true)">
+                            <div class="card-top">
+                                <span class="risk-badge badge-{{ c.risk_level | lower }}">{{ c.risk_level | upper }}</span>
+                                <strong class="catchment-title">{{ c.catchment_name }}</strong>
+                            </div>
+                            <div class="card-sub">
+                                <span><i data-lucide="waves"></i> {{ c.river }}</span>
+                                <span><i data-lucide="map-pin"></i> {{ c.district }}, {{ c.state }}</span>
+                            </div>
+                            {% if c.ndma_alerts %}
+                            <div class="landslide-badge-row">
+                                {% for alert in c.ndma_alerts %}
+                                <span class="landslide-badge-tag"><i data-lucide="alert-triangle"></i> {{ alert.event }}</span>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                            <div class="card-metrics">
+                                <span title="24h Rain"><i data-lucide="cloud-rain" class="icon-inline"></i> {{ c.rainfall_forecast.rain_24h_mm }} mm</span>
+                                <span title="Reservoir Level"><i data-lucide="droplet" class="icon-inline"></i> {{ c.river_and_reservoir.reservoir_level_m }} m</span>
+                                <span title="Inflow"><i data-lucide="activity" class="icon-inline"></i> {{ c.river_and_reservoir.inflow_cumecs }} m³/s</span>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+
+                <!-- Landslide & NDMA Alerts Tab Content -->
+                <div class="tab-content" id="tab-content-alerts">
+                    <div class="catchment-grouped-alerts" id="catchment-grouped-alerts">
+                        {% set alert_found = false %}
+                        {% for c in catchments %}
+                            {% if c.ndma_alerts or c.risk_level != 'Normal' %}
+                                {% set alert_found = true %}
+                                <div class="alert-catchment-group risk-{{ c.risk_level | lower }}">
+                                    <div class="group-header" onclick="selectCatchment('{{ c.catchment_name }}', true)">
+                                        <span class="risk-badge badge-{{ c.risk_level | lower }}">{{ c.risk_level }}</span>
+                                        <strong>{{ c.catchment_name }}</strong>
+                                        <span class="group-river">({{ c.river }})</span>
+                                    </div>
+                                    <div class="group-alerts-list">
+                                        {% for alert in c.ndma_alerts %}
+                                        <div class="alert-item ndma-alert" onclick="selectCatchment('{{ c.catchment_name }}', true)">
+                                            <div class="alert-icon"><i data-lucide="alert-triangle"></i></div>
+                                            <div class="alert-body">
+                                                <strong style="color: #dc2626;">[NDMA {{ alert.severity | upper }}] {{ alert.event }}</strong>
+                                                <p style="font-weight: 600;">{{ alert.headline }}</p>
+                                                <p>{{ alert.description }}</p>
+                                                <span class="alert-meta">Distance: {{ alert.distance_km }} km | Area: {{ alert.area_description }}</span>
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                        {% if c.rainfall_forecast.rain_24h_mm >= 15.0 %}
+                                        <div class="alert-item imd-alert" onclick="selectCatchment('{{ c.catchment_name }}', true)">
+                                            <div class="alert-icon"><i data-lucide="cloud-rain"></i></div>
+                                            <div class="alert-body">
+                                                <strong>IMD Heavy Rainfall Warning: {{ c.rainfall_forecast.rain_24h_mm }} mm/24h</strong>
+                                                <p>Heavy rainfall activity forecast inside {{ c.catchment_name }} catchment boundary.</p>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW B: MERGED CATCHMENT DATA DETAIL INSPECTOR (Includes Back Button) -->
+            <div class="sidebar-view hidden" id="sidebar-view-detail">
+                <header class="detail-view-header">
+                    <button class="back-to-list-btn" onclick="closeSidePanel()">
+                        <i data-lucide="arrow-left"></i> Back to Catchments List
+                    </button>
+                    <div class="panel-title-area" style="margin-top: 0.5rem;">
+                        <div class="badge-row">
+                            <span class="risk-badge" id="panel-risk-badge">NORMAL</span>
+                            <span class="catchment-id-text" id="panel-catchment-id">CATCH-000</span>
+                        </div>
+                        <h2 id="panel-catchment-name">Teesta Low Dam IV Catchment</h2>
+                        <span class="panel-subtitle" id="panel-river-state">Teesta River • West Bengal</span>
+                    </div>
+                </header>
+
+                <div class="panel-body">
+                    <!-- NDMA Emergency & Landslide Alert Callout Banner -->
+                    <section class="panel-section-box alert-section-highlight" id="panel-ndma-alerts-section">
+                        <h3 class="section-title"><i data-lucide="alert-triangle"></i> Landslide & NDMA Emergency Disaster Warnings</h3>
+                        <div id="panel-ndma-alerts-list" class="alerts-container">
+                            <div class="empty-alerts">No active disaster warnings for this catchment.</div>
+                        </div>
+                    </section>
+
+
+                    <!-- Weather Telemetry Overview -->
+                    <div class="telemetry-grid">
+                        <div class="telemetry-card">
+                            <div class="t-icon-box"><i data-lucide="cloud"></i></div>
+                            <div class="t-data">
+                                <span class="t-val" id="panel-weather-condition">Moderate Rain</span>
+                                <span class="t-label">Weather Condition</span>
+                            </div>
+                        </div>
+                        <div class="telemetry-card">
+                            <div class="t-icon-box"><i data-lucide="cloud-rain"></i></div>
+                            <div class="t-data">
+                                <span class="t-val" id="panel-rain-24h">45.0 mm</span>
+                                <span class="t-label">24h Rainfall</span>
+                            </div>
+                        </div>
+                        <div class="telemetry-card">
+                            <div class="t-icon-box"><i data-lucide="wind"></i></div>
+                            <div class="t-data">
+                                <span class="t-val" id="panel-wind-speed">14 km/h</span>
+                                <span class="t-label">Wind Speed</span>
+                            </div>
+                        </div>
+                        <div class="telemetry-card">
+                            <div class="t-icon-box"><i data-lucide="thermometer"></i></div>
+                            <div class="t-data">
+                                <span class="t-val" id="panel-temp-humidity">24.5°C / 78%</span>
+                                <span class="t-label">Temp / Humidity</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 5-Day Rainfall Forecast & Timeline -->
+                    <section class="panel-section-box">
+                        <h3 class="section-title"><i data-lucide="cloud-rain"></i> 5-Day IMD Rainfall Timeline</h3>
+                        <div class="chart-wrapper">
+                            <canvas id="catchmentRainChart"></canvas>
+                        </div>
+                        <div class="rainfall-summary-row" id="panel-rain-reasons">
+                            <span>Max 3-Hour Rain Intensity: <strong id="panel-max-3h">12.5 mm</strong></span>
+                            <span>72-Hour Cumulative Rain: <strong id="panel-rain-72h">85.0 mm</strong></span>
+                        </div>
+                    </section>
+
+                    <!-- River & Reservoir Operational Level -->
+                    <section class="panel-section-box">
+                        <h3 class="section-title"><i data-lucide="droplet"></i> River & Reservoir Telemetry</h3>
+                        <div class="gauge-status-bar">
+                            <div class="gauge-metric">
+                                <span class="g-label">Full Reservoir Level (FRL)</span>
+                                <span class="g-val" id="panel-frl">182.50 m</span>
+                            </div>
+                            <div class="gauge-metric highlight">
+                                <span class="g-label">Current Water Level</span>
+                                <span class="g-val" id="panel-res-level">180.10 m</span>
+                            </div>
+                            <div class="gauge-metric">
+                                <span class="g-label">Danger Level</span>
+                                <span class="g-val" id="panel-danger-mark">184.00 m</span>
+                            </div>
+                        </div>
+
+                        <div class="flow-metrics-row">
+                            <div class="flow-pill inflow">
+                                <span>Inflow:</span>
+                                <strong id="panel-inflow">420.0 m³/s</strong>
+                            </div>
+                            <div class="flow-pill outflow">
+                                <span>Outflow:</span>
+                                <strong id="panel-outflow">410.0 m³/s</strong>
+                            </div>
+                            <div class="flow-pill trend">
+                                <span>Trend:</span>
+                                <strong id="panel-river-trend">Steady</strong>
+                            </div>
+                        </div>
+
+                        <div class="dam-status-callout" id="panel-dam-status">
+                            <i data-lucide="info"></i>
+                            <span>Normal Power Generation Operations</span>
+                        </div>
+                    </section>
+
+                    <!-- Monitored NHPC Hydro Projects -->
+                    <section class="panel-section-box">
+                        <h3 class="section-title"><i data-lucide="zap"></i> Monitored Hydroelectric Projects Inside</h3>
+                        <ul id="panel-projects-list" class="projects-inside-list">
+                            <li class="project-item">
+                                <strong id="panel-project-name">Teesta Low Dam IV HEP</strong>
+                                <span>Capacity: 160 MW | Type: Low Dam Run-of-River</span>
+                            </li>
+                        </ul>
+                    </section>
+
+                    <!-- Affected Districts & Metadata -->
+                    <section class="panel-section-box">
+                        <h3 class="section-title"><i data-lucide="map"></i> Geographic Coverage</h3>
+                        <div class="districts-tags" id="panel-districts-tags">
+                            <span class="district-tag">Darjeeling</span>
+                            <span class="district-tag">Kalimpong</span>
+                        </div>
+                        <div class="panel-footer-meta">
+                            <span>Last Telemetry Update: <strong id="panel-last-updated">2026-08-02 17:30 IST</strong></span>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+        </aside>
+
+        <!-- Leaflet Map Canvas (Takes 100% of remaining right viewport) -->
+        <main class="catchment-map-section">
+            <div id="map"></div>
+        </main>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Pass backend catchment JSON payload directly to map.js
+    window.INITIAL_CATCHMENTS = {{ catchments | tojson }};
+    window.INITIAL_SUMMARY = {{ catchment_summary | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/map.js') }}"></script>
+{% endblock %}

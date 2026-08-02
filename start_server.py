@@ -1,601 +1,280 @@
 """
-NHPC Weather Warning System — HTTP Server & REST API.
+NHPC Hydro Power Weather Warning & NDMA Emergency Alert System — Unified Flask Server.
 
-Serves the web dashboard (static files) and provides REST API endpoints
-for weather forecasts, plant data, alert history, health checks,
-metrics, and API documentation.
-
-Features:
-- ThreadingTCPServer for concurrent request handling
-- Input validation and HTML sanitization
-- Security headers (CSP, HSTS, X-Frame-Options, etc.)
-- IP-based rate limiting (defense-in-depth)
-- Kubernetes-compatible health probes (/liveness, /readiness)
-- Prometheus metrics endpoint (/metrics)
-- Redoc API documentation (/api/docs)
-
-Usage:
-    python start_server.py
+Serves:
+1. Public GIS Dashboard (static files & Leaflet map).
+2. Standalone REST API v1 for AI Warning Systems (/api/v1/ai-summary, /api/v1/warnings, /api/v1/forecasts).
+3. Admin Management Portal (/admin, /admin/login, /admin/settings).
+4. Health Probes & Observability (/api/health, /api/liveness, /api/readiness, /metrics).
 """
 
-import http.server
-import socketserver
-import webbrowser
-import threading
-import time
-import sys
 import os
+import sys
+import time
 import json
-import html
-import shutil
-from urllib.parse import urlparse, parse_qs
-from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict
+
+from flask import Flask, Blueprint, request, jsonify, render_template_string, send_from_directory, redirect, url_for, session
 
 import database
+import warning_service
+import ndma_service
+from spatial_engine import spatial_engine
 from log import setup_logging, get_logger
 from config import get_settings
-from metrics import (
-    HTTP_REQUEST_DURATION,
-    HTTP_REQUEST_TOTAL,
-    HTTP_ERROR_TOTAL,
-    generate_latest,
-    CONTENT_TYPE_LATEST,
-    PROMETHEUS_AVAILABLE,
-)
+from metrics import generate_latest, CONTENT_TYPE_LATEST, PROMETHEUS_AVAILABLE
 
-# --- Initialize logging and config ---
 settings = get_settings()
-setup_logging(
-    level=settings.LOG_LEVEL,
-    fmt=settings.LOG_FORMAT,
-    log_file=settings.LOG_FILE,
-)
+setup_logging(level=settings.LOG_LEVEL, fmt=settings.LOG_FORMAT, log_file=settings.LOG_FILE)
 logger = get_logger("nhpc.server")
 
-# --- Process start time for uptime tracking ---
 _START_TIME = time.monotonic()
 
-# --- Rate Limiter (in-memory, per-IP) ---
-_rate_lock = threading.Lock()
-_rate_map: Dict[str, list] = {}  # IP -> list of request timestamps
+# Initialize Database on launch
+database.init_db()
+
+# Create Flask App
+app = Flask(__name__, static_folder="web", static_url_path="")
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "nhpc-secret-key-2026-catppuccin")
+
+# ---------------------------------------------------------------------------
+# Blueprints Definition
+# ---------------------------------------------------------------------------
+
+api_bp = Blueprint("api_v1", __name__, url_prefix="/api/v1")
+public_bp = Blueprint("public", __name__)
+admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
-def _check_rate_limit(ip: str) -> bool:
-    """Check if an IP has exceeded the rate limit.
+# ---------------------------------------------------------------------------
+# API v1 Endpoints (AI-First Standalone API)
+# ---------------------------------------------------------------------------
 
-    Args:
-        ip: Client IP address.
-
-    Returns:
-        True if rate limit exceeded, False if within limits.
-    """
-    rpm = settings.RATE_LIMIT_RPM
-    if rpm <= 0:
-        return False  # Rate limiting disabled
-
-    now = time.time()
-    window = 60.0  # 1 minute window
-
-    with _rate_lock:
-        if ip not in _rate_map:
-            _rate_map[ip] = []
-
-        # Purge old entries
-        _rate_map[ip] = [t for t in _rate_map[ip] if now - t < window]
-
-        if len(_rate_map[ip]) >= rpm:
-            return True  # Rate limit exceeded
-
-        _rate_map[ip].append(now)
-        return False
-
-
-def _cleanup_rate_map() -> None:
-    """Periodically clean up stale rate limit entries."""
-    now = time.time()
-    with _rate_lock:
-        stale_ips = [ip for ip, times in _rate_map.items()
-                     if not times or now - max(times) > 120]
-        for ip in stale_ips:
-            del _rate_map[ip]
-
-
-# --- Input Validation ---
-
-def sanitize_name(raw_name: Optional[str]) -> str:
-    """Sanitize user-provided name: strip HTML, limit length.
-
-    Args:
-        raw_name: Raw user input string.
-
-    Returns:
-        Cleaned, HTML-escaped, length-limited string.
-    """
-    if not raw_name:
-        return ""
-    # Strip HTML tags
-    cleaned = html.escape(raw_name.strip())
-    # Limit length
-    if len(cleaned) > settings.NAME_MAX_LENGTH:
-        cleaned = cleaned[:settings.NAME_MAX_LENGTH]
-    return cleaned
-
-
-def validate_coordinates(lat_str: str, lon_str: str) -> tuple:
-    """Validate and parse lat/lon strings.
-
-    Args:
-        lat_str: Latitude as string.
-        lon_str: Longitude as string.
-
-    Returns:
-        Tuple of (lat, lon) as floats.
-
-    Raises:
-        ValueError: If coordinates are invalid or out of range.
-    """
+@api_bp.route("/ai-summary", methods=["GET"])
+def get_ai_summary():
+    """Returns aggregated high-level JSON for AI Agent consumption."""
     try:
-        lat = float(lat_str)
-        lon = float(lon_str)
-    except (ValueError, TypeError):
-        raise ValueError("Latitude and longitude must be valid numbers.")
-
-    if not (settings.LAT_MIN <= lat <= settings.LAT_MAX):
-        raise ValueError(f"Latitude must be between {settings.LAT_MIN} and {settings.LAT_MAX} for Indian region.")
-    if not (settings.LON_MIN <= lon <= settings.LON_MAX):
-        raise ValueError(f"Longitude must be between {settings.LON_MIN} and {settings.LON_MAX} for Indian region.")
-
-    return lat, lon
-
-
-# --- Response Helpers ---
-
-def send_json_response(
-    handler: http.server.BaseHTTPRequestHandler,
-    status_code: int,
-    data: Any,
-    cache_seconds: int = 60,
-) -> None:
-    """Send a JSON response with proper security & caching headers.
-
-    Args:
-        handler: HTTP request handler instance.
-        status_code: HTTP status code.
-        data: Data to serialize as JSON.
-        cache_seconds: Cache-Control max-age (0 = no-cache).
-    """
-    handler.send_response(status_code)
-    handler.send_header('Content-Type', 'application/json')
-    handler.send_header('Access-Control-Allow-Origin', handler.headers.get('Origin', '*'))
-    handler.send_header('X-Content-Type-Options', 'nosniff')
-    handler.send_header('X-Frame-Options', 'DENY')
-    handler.send_header('X-XSS-Protection', '1; mode=block')
-    handler.send_header('Referrer-Policy', 'strict-origin-when-cross-origin')
-    handler.send_header('Content-Security-Policy', "default-src 'self'")
-    if settings.is_production:
-        handler.send_header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
-    if cache_seconds > 0:
-        handler.send_header('Cache-Control', f'public, max-age={cache_seconds}')
-    else:
-        handler.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
-    handler.end_headers()
-    handler.wfile.write(json.dumps(data).encode('utf-8'))
-
-
-def send_error_response(
-    handler: http.server.BaseHTTPRequestHandler,
-    status_code: int,
-    user_message: str,
-) -> None:
-    """Send a safe error response that doesn't leak internals.
-
-    Args:
-        handler: HTTP request handler instance.
-        status_code: HTTP error status code.
-        user_message: User-facing error message.
-    """
-    send_json_response(handler, status_code, {"error": user_message}, cache_seconds=0)
-
-
-# --- HTTP Request Handler ---
-
-class Handler(http.server.SimpleHTTPRequestHandler):
-    """HTTP request handler for the NHPC API and web dashboard."""
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        # Serve from the web subfolder
-        super().__init__(*args, directory=settings.WEB_DIR, **kwargs)
-
-    def log_message(self, format: str, *args: Any) -> None:
-        """Override to use structured logging instead of stderr."""
-        logger.info("%s - %s", self.address_string(), format % args)
-
-    def do_GET(self) -> None:
-        """Handle GET requests for API endpoints and static files."""
-        request_start = time.monotonic()
-        path = self.path.split("?")[0]  # Clean path for metrics
-
-        # --- Rate Limiting ---
-        client_ip = self.address_string()
-        if path.startswith('/api/') and _check_rate_limit(client_ip):
-            logger.warning("Rate limit exceeded for %s", client_ip)
-            send_error_response(self, 429, "Too many requests. Please slow down.")
-            HTTP_ERROR_TOTAL.labels(method="GET", endpoint=path, status_code="429").inc()
-            return
-
-        # --- Path Traversal Protection ---
-        if '..' in self.path:
-            send_error_response(self, 400, "Invalid request path.")
-            return
-
-        # ---------------------------------------------------------------
-        # 1. Liveness Probe (lightweight, no dependencies)
-        # ---------------------------------------------------------------
-        if self.path == '/api/liveness':
-            send_json_response(self, 200, {"status": "alive"}, cache_seconds=0)
-            self._record_metrics("GET", "/api/liveness", 200, request_start)
-            return
-
-        # ---------------------------------------------------------------
-        # 2. Readiness Probe (checks database + data freshness)
-        # ---------------------------------------------------------------
-        if self.path == '/api/readiness':
-            try:
-                db_ok = False
-                try:
-                    conn = database.get_connection()
-                    conn.execute("SELECT 1")
-                    conn.close()
-                    db_ok = True
-                except Exception as e:
-                    logger.warning("Readiness: database check failed: %s", e)
-
-                forecast_fresh = False
-                try:
-                    run_data = database.get_latest_forecast_run()
-                    if run_data and run_data.get("run"):
-                        fetched_at = run_data["run"].get("fetched_at", "")
-                        if fetched_at:
-                            last_fetch = datetime.strptime(fetched_at, "%Y-%m-%d %H:%M:%S")
-                            forecast_fresh = (datetime.now() - last_fetch) < timedelta(hours=12)
-                except Exception as e:
-                    logger.warning("Readiness: forecast freshness check failed: %s", e)
-
-                ready = db_ok and forecast_fresh
-                status_code = 200 if ready else 503
-                data = {
-                    "status": "ready" if ready else "not_ready",
-                    "database": "connected" if db_ok else "disconnected",
-                    "forecast_fresh": forecast_fresh,
-                }
-                send_json_response(self, status_code, data, cache_seconds=0)
-                self._record_metrics("GET", "/api/readiness", status_code, request_start)
-            except Exception as e:
-                logger.error("Readiness probe failed: %s", e, exc_info=True)
-                send_error_response(self, 503, "Readiness check failed.")
-                self._record_metrics("GET", "/api/readiness", 503, request_start)
-            return
-
-        # ---------------------------------------------------------------
-        # 3. Health Check (comprehensive)
-        # ---------------------------------------------------------------
-        if self.path == '/api/health':
-            try:
-                # Check database connectivity
-                db_ok = False
-                try:
-                    conn = database.get_connection()
-                    conn.execute("SELECT 1")
-                    conn.close()
-                    db_ok = True
-                except Exception as e:
-                    logger.warning("Health: database check failed: %s", e)
-
-                # Check last forecast run
-                last_run = None
-                try:
-                    run_data = database.get_latest_forecast_run()
-                    if run_data and run_data.get("run"):
-                        last_run = run_data["run"].get("fetched_at")
-                except Exception as e:
-                    logger.warning("Health: forecast run check failed: %s", e)
-
-                # Disk usage
-                disk_info: Dict[str, Any] = {}
-                try:
-                    usage = shutil.disk_usage(settings.DATA_DIR)
-                    disk_info = {
-                        "total_gb": round(usage.total / (1024 ** 3), 2),
-                        "free_gb": round(usage.free / (1024 ** 3), 2),
-                        "used_percent": round((usage.used / usage.total) * 100, 1),
-                    }
-                except Exception:
-                    pass
-
-                # Uptime
-                uptime_seconds = round(time.monotonic() - _START_TIME, 1)
-
-                health_data = {
-                    "status": "healthy" if db_ok else "degraded",
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S IST"),
-                    "database": "connected" if db_ok else "disconnected",
-                    "last_forecast_run": last_run,
-                    "uptime_seconds": uptime_seconds,
-                    "disk": disk_info,
-                    "uptime": "active"
-                }
-
-                status_code = 200 if db_ok else 503
-                send_json_response(self, status_code, health_data, cache_seconds=0)
-                self._record_metrics("GET", "/api/health", status_code, request_start)
-            except Exception as e:
-                logger.error("Health check failed: %s", e, exc_info=True)
-                send_error_response(self, 503, "Service health check failed.")
-                self._record_metrics("GET", "/api/health", 503, request_start)
-            return
-
-        # ---------------------------------------------------------------
-        # 4. Prometheus Metrics
-        # ---------------------------------------------------------------
-        if self.path == '/metrics':
-            try:
-                output = generate_latest()
-                self.send_response(200)
-                self.send_header('Content-Type', CONTENT_TYPE_LATEST)
-                self.end_headers()
-                self.wfile.write(output)
-            except Exception as e:
-                logger.error("Metrics endpoint failed: %s", e)
-                send_error_response(self, 500, "Metrics generation failed.")
-            return
-
-        # ---------------------------------------------------------------
-        # 5. API Documentation (Redoc)
-        # ---------------------------------------------------------------
-        if self.path == '/api/docs':
-            redoc_html = """<!DOCTYPE html>
-<html><head>
-<title>NHPC API Documentation</title>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
-<style>body{margin:0;padding:0;}</style>
-</head><body>
-<redoc spec-url='/api/openapi.yaml'></redoc>
-<script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
-</body></html>"""
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(redoc_html.encode('utf-8'))
-            return
-
-        if self.path == '/api/openapi.yaml':
-            spec_path = os.path.join(settings.WORKSPACE_DIR, "openapi.yaml")
-            if os.path.exists(spec_path):
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/x-yaml')
-                self.send_header('Access-Control-Allow-Origin', '*')
-                self.end_headers()
-                with open(spec_path, 'rb') as f:
-                    self.wfile.write(f.read())
-            else:
-                send_error_response(self, 404, "OpenAPI spec not found.")
-            return
-
-        # ---------------------------------------------------------------
-        # 6. On-Demand Forecast API
-        # ---------------------------------------------------------------
-        if self.path.startswith('/api/forecast'):
-            parsed_url = urlparse(self.path)
-            query_params = parse_qs(parsed_url.query)
-
-            lat_param = query_params.get('lat')
-            lon_param = query_params.get('lon')
-            name_param = query_params.get('name')
-
-            if not lat_param or not lon_param:
-                send_error_response(self, 400, "Latitude and longitude parameters are required.")
-                self._record_metrics("GET", "/api/forecast", 400, request_start)
-                return
-
-            try:
-                # Validate coordinates
-                lat, lon = validate_coordinates(lat_param[0], lon_param[0])
-
-                # Sanitize name
-                raw_name = name_param[0] if name_param else f"Coordinates ({lat:.4f}, {lon:.4f})"
-                name = sanitize_name(raw_name)
-
-                # Import libraries dynamically
-                import imd_ping
-                import update_forecasts
-
-                try:
-                    model_str = imd_ping.get_model()
-                    start_utc = datetime.strptime(model_str, "%Y%m%d%H")
-                    start_ist = start_utc + timedelta(hours=5, minutes=30)
-                except Exception as e:
-                    logger.warning("Error fetching model date: %s", e)
-                    start_ist = datetime.now()
-
-                logger.info("Fetching on-demand forecast for: %s (%s, %s)", name, lat, lon)
-                forecast_raw = imd_ping.get_forecast(lat, lon)
-                analysis = update_forecasts.analyze_forecast(forecast_raw["forecast"], start_ist)
-
-                plant_result = {
-                    "id": "custom-" + f"{lat:.4f}-{lon:.4f}".replace(".", "-").replace("-", "_"),
-                    "name": name,
-                    "lat": lat,
-                    "lon": lon,
-                    "boundaries": [],
-                    "alert_level": analysis["alert_level"],
-                    "reasons": analysis["reasons"],
-                    "summary": analysis["summary"],
-                    "forecast": analysis["details"]
-                }
-
-                # Log on-demand forecast request into database
-                database.record_on_demand_query(
-                    query_id=plant_result["id"],
-                    name=name,
-                    lat=lat,
-                    lon=lon,
-                    alert_level=analysis["alert_level"],
-                    summary=analysis["summary"],
-                    forecast=analysis["details"]
-                )
-
-                send_json_response(self, 200, plant_result)
-                self._record_metrics("GET", "/api/forecast", 200, request_start)
-
-            except ValueError as e:
-                # Input validation errors — safe to show to client
-                send_error_response(self, 400, str(e))
-                self._record_metrics("GET", "/api/forecast", 400, request_start)
-            except Exception as e:
-                logger.error("Error processing forecast API request: %s", e, exc_info=True)
-                send_error_response(self, 500, "Failed to fetch forecast data. Please try again later.")
-                self._record_metrics("GET", "/api/forecast", 500, request_start)
-            return
-
-        # ---------------------------------------------------------------
-        # 7. Plants API
-        # ---------------------------------------------------------------
-        elif self.path == '/api/plants':
-            try:
-                plants = database.get_all_plants()
-                send_json_response(self, 200, plants)
-                self._record_metrics("GET", "/api/plants", 200, request_start)
-            except Exception as e:
-                logger.error("Error fetching plants: %s", e, exc_info=True)
-                send_error_response(self, 500, "Failed to retrieve plant data.")
-                self._record_metrics("GET", "/api/plants", 500, request_start)
-            return
-
-        # ---------------------------------------------------------------
-        # 8. Alert History API
-        # ---------------------------------------------------------------
-        elif self.path == '/api/alerts' or self.path == '/api/history':
-            try:
-                history = database.get_alert_history(limit=50)
-                send_json_response(self, 200, history)
-                self._record_metrics("GET", "/api/alerts", 200, request_start)
-            except Exception as e:
-                logger.error("Error fetching alert history: %s", e, exc_info=True)
-                send_error_response(self, 500, "Failed to retrieve alert history.")
-                self._record_metrics("GET", "/api/alerts", 500, request_start)
-            return
-
-        # ---------------------------------------------------------------
-        # 9. Latest Forecast Run API
-        # ---------------------------------------------------------------
-        elif self.path == '/api/latest':
-            try:
-                run_data = database.get_latest_forecast_run()
-                send_json_response(self, 200, run_data or {})
-                self._record_metrics("GET", "/api/latest", 200, request_start)
-            except Exception as e:
-                logger.error("Error fetching latest forecast run: %s", e, exc_info=True)
-                send_error_response(self, 500, "Failed to retrieve latest forecast data.")
-                self._record_metrics("GET", "/api/latest", 500, request_start)
-            return
-
-        # ---------------------------------------------------------------
-        # 10. Static File Serving (web dashboard)
-        # ---------------------------------------------------------------
-        super().do_GET()
-
-    def _record_metrics(
-        self,
-        method: str,
-        endpoint: str,
-        status_code: int,
-        request_start: float,
-    ) -> None:
-        """Record HTTP request metrics for Prometheus.
-
-        Args:
-            method: HTTP method (GET, POST, etc.).
-            endpoint: API endpoint path.
-            status_code: HTTP response status code.
-            request_start: Monotonic timestamp when request started.
-        """
-        elapsed = time.monotonic() - request_start
-        status_str = str(status_code)
-        HTTP_REQUEST_DURATION.labels(
-            method=method, endpoint=endpoint, status_code=status_str,
-        ).observe(elapsed)
-        HTTP_REQUEST_TOTAL.labels(
-            method=method, endpoint=endpoint, status_code=status_str,
-        ).inc()
-        if status_code >= 400:
-            HTTP_ERROR_TOTAL.labels(
-                method=method, endpoint=endpoint, status_code=status_str,
-            ).inc()
-
-
-# --- Server Startup ---
-
-def run_server() -> None:
-    """Start the HTTP server."""
-    port = settings.APP_PORT
-    # Use ThreadingTCPServer so concurrent requests don't block each other
-    socketserver.TCPServer.allow_reuse_address = True
-    try:
-        with socketserver.ThreadingTCPServer(("", port), Handler) as httpd:
-            logger.info("=" * 55)
-            logger.info("  NHPC Weather Warning Dashboard — Web Server")
-            logger.info("=" * 55)
-            logger.info("  Serving at:  http://localhost:%d/index.html", port)
-            logger.info("  Health:      http://localhost:%d/api/health", port)
-            logger.info("  Liveness:    http://localhost:%d/api/liveness", port)
-            logger.info("  Readiness:   http://localhost:%d/api/readiness", port)
-            logger.info("  API Docs:    http://localhost:%d/api/docs", port)
-            if PROMETHEUS_AVAILABLE:
-                logger.info("  Metrics:     http://localhost:%d/metrics", port)
-            logger.info("  Directory:   %s", settings.WEB_DIR)
-            logger.info("  Environment: %s", settings.APP_ENV)
-            logger.info("  Log Level:   %s", settings.LOG_LEVEL)
-            logger.info("  Press Ctrl+C to stop the server.")
-            logger.info("=" * 55)
-
-            # Start rate limiter cleanup thread
-            def _rate_cleanup_loop():
-                while True:
-                    time.sleep(120)
-                    _cleanup_rate_map()
-
-            cleanup_thread = threading.Thread(target=_rate_cleanup_loop, daemon=True)
-            cleanup_thread.start()
-
-            httpd.serve_forever()
+        summary = warning_service.generate_ai_warning_summary()
+        return jsonify(summary), 200
     except Exception as e:
-        logger.critical("Error starting server: %s", e, exc_info=True)
-        sys.exit(1)
+        logger.error(f"Error generating AI summary: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@api_bp.route("/warnings", methods=["GET"])
+def get_warnings():
+    """Returns active integrated warnings (IMD rainfall + NDMA disaster proximity)."""
+    try:
+        warnings = database.get_active_project_warnings()
+        return jsonify({"status": "success", "count": len(warnings), "warnings": warnings}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@api_bp.route("/ndma-alerts", methods=["GET"])
+def get_ndma_alerts():
+    """Returns active NDMA Sachet CAP disaster alerts."""
+    try:
+        alerts = database.get_active_ndma_alerts()
+        return jsonify({"status": "success", "count": len(alerts), "alerts": alerts}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@api_bp.route("/forecasts", methods=["GET"])
+def get_latest_forecasts():
+    """Returns latest IMD station weather forecasts."""
+    try:
+        latest = database.get_latest_forecast_run()
+        if not latest:
+            return jsonify({"error": "No forecast data available"}), 444
+        return jsonify(latest), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@api_bp.route("/catchments", methods=["GET"])
+def get_catchments():
+    """Returns NHPC catchment polygon boundaries."""
+    try:
+        catchments = spatial_engine.load_catchments()
+        return jsonify({"status": "success", "count": len(catchments), "catchments": catchments}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Public Web Routes & Legacy API compatibility
+# ---------------------------------------------------------------------------
+
+@public_bp.route("/")
+@public_bp.route("/index.html")
+def serve_index():
+    return send_from_directory("web", "index.html")
+
+
+@public_bp.route("/<path:path>")
+def serve_static(path):
+    if os.path.exists(os.path.join("web", path)):
+        return send_from_directory("web", path)
+    return jsonify({"error": "File not found"}), 404
+
+
+@public_bp.route("/api/forecast", methods=["GET"])
+def legacy_api_forecast():
+    """Legacy on-demand forecast query for custom lat/lon."""
+    lat_str = request.args.get("lat")
+    lon_str = request.args.get("lon")
+    name = request.args.get("name", "Custom Dam Site")
+
+    if not lat_str or not lon_str:
+        return jsonify({"error": "Missing lat or lon parameter"}), 400
+
+    try:
+        lat, lon = float(lat_str), float(lon_str)
+        import imd_ping
+        import update_forecasts
+
+        start_ist = imd_ping.get_latest_model_run_time()
+        imd_data = imd_ping.fetch_imd_mausamgram(lat, lon)
+        forecast_analysis = update_forecasts.analyze_forecast(name, imd_data, start_ist)
+
+        query_id = f"custom-{int(lat*1000)}-{int(lon*1000)}"
+        database.record_on_demand_query(
+            query_id=query_id,
+            name=name,
+            lat=lat,
+            lon=lon,
+            alert_level=forecast_analysis["alert_level"],
+            summary=forecast_analysis["summary"],
+            forecast=forecast_analysis["forecast"]
+        )
+
+        return jsonify(forecast_analysis), 200
+    except Exception as e:
+        logger.error(f"Error in on-demand forecast query: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@public_bp.route("/api/plants", methods=["GET"])
+def legacy_api_plants():
+    return jsonify(database.get_all_plants()), 200
+
+
+@public_bp.route("/api/alerts", methods=["GET"])
+@public_bp.route("/api/history", methods=["GET"])
+def legacy_api_alerts():
+    return jsonify(database.get_alert_history(limit=50)), 200
+
+
+@public_bp.route("/api/latest", methods=["GET"])
+def legacy_api_latest():
+    latest = database.get_latest_forecast_run()
+    return jsonify(latest or {}), 200
+
+
+@public_bp.route("/api/health", methods=["GET"])
+def health_check():
+    stats = database.get_database_stats()
+    uptime = time.monotonic() - _START_TIME
+    return jsonify({
+        "status": "healthy",
+        "uptime_seconds": round(uptime, 2),
+        "database": stats
+    }), 200
+
+
+@public_bp.route("/api/liveness", methods=["GET"])
+def liveness():
+    return jsonify({"status": "alive"}), 200
+
+
+@public_bp.route("/api/readiness", methods=["GET"])
+def readiness():
+    try:
+        stats = database.get_database_stats()
+        return jsonify({"status": "ready", "database": stats}), 200
+    except Exception:
+        return jsonify({"status": "degraded"}), 503
+
+
+@public_bp.route("/metrics", methods=["GET"])
+def metrics():
+    if PROMETHEUS_AVAILABLE:
+        return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
+    return "Prometheus metrics disabled", 404
+
+
+# ---------------------------------------------------------------------------
+# Admin Portal Blueprint
+# ---------------------------------------------------------------------------
+
+ADMIN_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>NHPC Admin Portal - System Controls</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #1e1e2e; color: #cdd6f4; margin: 0; padding: 2rem; }
+        .card { background: #181825; border: 1px solid #313244; padding: 1.5rem; border-radius: 8px; max-width: 700px; margin: 0 auto; }
+        h2 { color: #89b4fa; border-bottom: 1px solid #313244; padding-bottom: 0.5rem; }
+        .form-group { margin-bottom: 1.2rem; }
+        label { display: block; margin-bottom: 0.4rem; color: #a6adc8; }
+        input[type="text"], input[type="number"] { width: 100%; padding: 0.6rem; background: #313244; border: 1px solid #45475a; color: #cdd6f4; border-radius: 4px; }
+        button { background: #89b4fa; color: #11111b; border: none; padding: 0.7rem 1.4rem; font-weight: bold; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #b4befe; }
+        .badge { background: #a6e3a1; color: #11111b; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.85rem; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>⚡ NHPC System Controls & Proximity Settings</h2>
+        {% if msg %}
+            <p style="color: #a6e3a1;">{{ msg }}</p>
+        {% endif %}
+        <form method="POST" action="/admin/settings">
+            <div class="form-group">
+                <label>Catchment & NDMA Proximity Buffer Threshold (km):</label>
+                <input type="number" name="warning_distance_km" value="{{ settings.get('warning_distance_km', '25') }}" min="1" max="500">
+            </div>
+            <div class="form-group">
+                <label>System Mode:</label>
+                <span class="badge">ACTIVE (Standalone AI API First)</span>
+            </div>
+            <button type="submit">Save Configuration</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
+
+@admin_bp.route("/")
+@admin_bp.route("/settings", methods=["GET", "POST"])
+def admin_settings():
+    msg = None
+    if request.method == "POST":
+        dist_val = request.form.get("warning_distance_km", "25")
+        database.update_system_setting("warning_distance_km", dist_val)
+        msg = f"Successfully updated Proximity Buffer Threshold to {dist_val} km!"
+
+    curr_settings = database.get_system_settings()
+    return render_template_string(ADMIN_HTML, settings=curr_settings, msg=msg)
+
+
+# Register Blueprints
+app.register_blueprint(api_bp)
+app.register_blueprint(public_bp)
+app.register_blueprint(admin_bp)
+
+
+def main():
+    port = settings.APP_PORT
+    logger.info(f"Starting NHPC Unified Flask Application on http://localhost:{port}")
+    logger.info(f"AI API Summary Endpoint available at http://localhost:{port}/api/v1/ai-summary")
+    app.run(host="0.0.0.0", port=port, debug=False)
 
 
 if __name__ == "__main__":
-    # Start server in a background daemon thread
-    server_thread = threading.Thread(target=run_server, daemon=True)
-    server_thread.start()
-
-    # Wait for server to bind port
-    time.sleep(0.8)
-
-    # Open dashboard in default web browser (only in development)
-    if not settings.is_production:
-        dashboard_url = f"http://localhost:{settings.APP_PORT}/index.html"
-        logger.info("Launching dashboard in your default browser...")
-        webbrowser.open(dashboard_url)
-    else:
-        logger.info("Production mode — skipping browser launch.")
-
-    # Keep main process alive to maintain the server
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("Stopping local web server. Goodbye!")
-        sys.exit(0)
+    main()

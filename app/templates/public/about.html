@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}About — NHPC & NDMA Warning Terminal{% endblock %}
+
+{% block content %}
+<div class="about-container" style="padding: 2rem; max-width: 800px; margin: 0 auto; color: #cdd6f4;">
+    <div class="card" style="background: #181825; border: 1px solid #313244; padding: 2rem; border-radius: 8px;">
+        <h2 style="color: #89b4fa; margin-top: 0;">🌊 About NHPC Hydro Power & NDMA GeoAlert System</h2>
+        <p style="line-height: 1.6; color: #a6adc8;">
+            This enterprise platform unifies high-resolution **IMD Mausamgram 0.125° Numerical Weather Prediction (NWP)** forecast analysis with **NDMA Sachet Common Alerting Protocol (CAP 1.2)** real-time disaster warnings.
+        </p>
+        <p style="line-height: 1.6; color: #a6adc8;">
+            Engineered for **NHPC power stations across India**, the system tracks catchment hydro-curves, evaluates extreme precipitation (>100mm/24h) and gale wind events, and computes sub-kilometer spatial geofencing using Shapely & PyProj ellipsoidal math.
+        </p>
+    </div>
+</div>
+{% endblock %}

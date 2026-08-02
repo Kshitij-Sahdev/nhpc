@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}
+    Admin Dashboard
+{% endblock %}
+
+{% block content %}
+    <div class="admin-container">
+        <div class="admin-header">
+            <div>
+                <h1>Admin Dashboard</h1>
+
+                <p>Manage monitored states and operational synchronization controls.</p>
+                
+                <div class="admin-header-actions">
+                    <a href="{{ url_for('admin.admin_logout') }}" class="logout-link">
+                        <button class="logout-button">Logout</button>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-card">
+            <div class="admin-card-header">
+                <div>
+                    <h2>Prioritized States</h2>
+
+                    <p>Currently selected states for CAP feed monitoring.</p>
+                </div>
+
+                <button type="button" class="expand-button" id="toggle-state-editor">Edit State Prioritization</button>
+            </div>
+
+            <div class="selected-state-tags">
+                {% for state in states %}
+                    {% if state.is_selected %}
+                        <span class="selected-state-tag"> {{ state.state_name }} </span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+
+            <div class="state-editor" id="state-editor">
+                <form method="POST" action="{{ url_for('admin.update_states') }}">
+                    <div class="state-actions">
+                        <button
+                            type="button"
+                            id="select-all-states"
+                            class="secondary-button"
+                        >
+                            Select All
+                        </button>
+
+                        <button
+                            type="button"
+                            id="clear-all-states"
+                            class="secondary-button"
+                        >
+                            Clear All
+                        </button>
+
+                        <button
+                            type="button"
+                            id="reset-states"
+                            class="secondary-button"
+                        >
+                            Reset Selection
+                        </button>
+                    </div>
+                    
+                    <div class="state-list">
+                        {% for state in states %}
+                            <label class="state-item">
+                                <input
+                                    type="checkbox"
+                                    name="selected_states"
+                                    value="{{ state.state_id }}"
+                                    data-original="{% if state.is_selected %}true{% else %}false{% endif %}"
+                                    {% if state.is_selected %} checked {% endif %} />
+                                
+                                <span> {{ state.state_name }} </span>
+                            </label>
+                        {% endfor %}
+                    </div>
+
+                    <div class="sticky-save-container">
+                        <button type="submit" class="primary-button">Save State Prioritization</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="admin-card">
+            <div class="admin-card-header">
+                <div>
+                    <h2>Application Settings</h2>
+
+                    <p>Configure synchronization and warning behavior.</p>
+                </div>  
+            </div>
+
+            <form method="POST" action="{{ url_for('admin.update_settings_route') }}">
+                <div class="settings-grid">
+                    <label>
+                        Scheduler Interval (minutes)
+
+                        <input
+                            type="number"
+                            name="scheduler_minutes"
+                            value="{{ settings.scheduler_minutes }}"
+                        >
+                    </label>
+
+                    <label>
+                        Request Delay (seconds)
+
+                        <input
+                            type="number"
+                            name="request_delay_seconds"
+                            value="{{ settings.request_delay_seconds }}"
+                        >
+                    </label>
+
+                    <label>
+                        Max Retries
+
+                        <input
+                            type="number"
+                            name="max_retries"
+                            value="{{ settings.max_retries }}"
+                        >
+                    </label>
+
+                    <label>
+                        Retry Delay (seconds)
+
+                        <input
+                            type="number"
+                            name="retry_delay_seconds"
+                            value="{{ settings.retry_delay_seconds }}"
+                        >
+                    </label>
+
+                    <label>
+                        Warning Distance (KMs)
+
+                        <input
+                            type="number"
+                            name="warning_distance_km"
+                            value="{{ settings.warning_distance_km }}"
+                        >
+                    </label>
+
+                    <label>
+                        Extreme Severity Color
+
+                        <input
+                            type="color"
+                            name="severity_extreme"
+                            value="{{ settings.severity_extreme }}"
+                        >
+                    </label>
+
+                    <label>
+                        Severe Severity Color
+
+                        <input
+                            type="color"
+                            name="severity_severe"
+                            value="{{ settings.severity_severe }}"
+                        >
+                    </label>
+
+                    <label>
+                        Moderate Severity Color
+
+                        <input
+                            type="color"
+                            name="severity_moderate"
+                            value="{{ settings.severity_moderate }}"
+                        >
+                    </label>
+
+                    <label>
+                        Minor Severity Color
+
+                        <input
+                            type="color"
+                            name="severity_minor"
+                            value="{{ settings.severity_minor }}"
+                        >
+                    </label>
+
+                </div>
+
+                <div class="settings-actions">
+                    <button type="submit" class="primary-button">
+                        Save Settings
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div class="admin-card">
+            <div class="admin-card-header">
+                <div>
+                    <h2>Manual Synchronization</h2>
+                    
+                    <p>Trigger immediate CAP feed synchronization across selected states.</p>
+                </div>
+            </div>
+
+            <a href="{{ url_for('admin.admin_ingest') }}" class="sync-link">
+                <button class="sync-button">Run Manual Synchronization</button>
+            </a>
+        </div>
+
+        <div class="admin-card">
+            <div class="admin-card-header">
+                <div>
+                    <h2>Logs</h2>
+
+                    <p>Recent ingestion and system activity.</p>
+                </div>
+            </div>
+
+            <div class="log-viewer">
+                {% for log in logs %}
+                    <div class="log-line">{{ log }}</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const toggleButton = document.getElementById("toggle-state-editor");
+        const stateEditor = document.getElementById("state-editor");
+        toggleButton.addEventListener("click", () => {
+            stateEditor.classList.toggle("expanded");
+            toggleButton.textContent = stateEditor.classList.contains("expanded")
+                ? "Close State Editor"
+                : "Edit State Prioritization";
+        });
+
+        const state_checkboxes = document.querySelectorAll('input[name="selected_states"]');
+        document.getElementById("select-all-states").addEventListener(
+            "click",
+            () => {
+                state_checkboxes.forEach((checkbox) => { checkbox.checked = true; });
+            }
+        );
+
+        document.getElementById("clear-all-states").addEventListener(
+            "click",
+            () => {
+                state_checkboxes.forEach((checkbox) => { checkbox.checked = false; });
+            }
+        );
+
+        document.getElementById("reset-states").addEventListener(
+            "click",
+            () => {
+                state_checkboxes.forEach((checkbox) => { checkbox.checked = checkbox.dataset.original === "true"; });
+            }
+        );
+    </script>
+{% endblock %}

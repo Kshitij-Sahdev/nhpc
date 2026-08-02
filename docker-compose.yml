@@ -1,15 +1,26 @@
 services:
-  nhpc-dashboard:
-    build: .
-    container_name: nhpc-dashboard
+  nhpc-warning-system:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nhpc-warning-system
+    restart: unless-stopped
     ports:
-      - "80"
-    restart: always
-    env_file:
-      - .env
+      - "8000:8000"
+    environment:
+      - APP_PORT=8000
+      - PYTHONUNBUFFERED=1
+      - WARNING_DISTANCE_KM=25
+      - FLASK_ENV=production
     volumes:
-      # Persists the state transition database so updates aren't lost on restart
-      - nhpc_state_volume:/app/data
+      # Persists SQLite database data across container updates in Coolify
+      - nhpc_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/catchments/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     deploy:
       resources:
         limits:
@@ -18,17 +29,7 @@ services:
         reservations:
           memory: 128M
           cpus: '0.25'
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
 
 volumes:
-  nhpc_state_volume:
+  nhpc_data:
+    name: nhpc_data

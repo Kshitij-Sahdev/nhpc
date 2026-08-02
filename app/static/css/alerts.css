@@ -1,0 +1,2 @@
+/* Alerts CSS */
+.warning-callout { background: rgba(250, 179, 135, 0.15); border: 1px solid var(--color-orange); border-radius: 6px; padding: 0.8rem; margin-bottom: 1rem; }

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Management Portal — System Controls{% endblock %}
+
+{% block content %}
+<div class="admin-container" style="padding: 2rem; max-width: 900px; margin: 0 auto;">
+    <div class="card" style="background: #181825; border: 1px solid #313244; padding: 2rem; border-radius: 8px;">
+        <h2 style="color: #89b4fa; border-bottom: 1px solid #313244; padding-bottom: 0.5rem; margin-top: 0;">
+            ⚡ NHPC System Controls & Proximity Settings
+        </h2>
+        
+        <form method="POST" action="/admin/settings" style="margin-top: 1.5rem;">
+            <div class="form-group" style="margin-bottom: 1.5rem;">
+                <label style="display: block; margin-bottom: 0.5rem; color: #a6adc8; font-weight: bold;">
+                    Catchment & NDMA Proximity Buffer Threshold (km):
+                </label>
+                <input type="number" name="warning_distance_km" value="{{ settings.get('warning_distance_km', '25') }}" min="1" max="500" style="width: 100%; padding: 0.8rem; background: #313244; border: 1px solid #45475a; color: #cdd6f4; border-radius: 4px;">
+                <small style="color: #6c7086; display: block; margin-top: 0.4rem;">
+                    Default distance radius used by Shapely & PyProj ellipsoidal math engine to match NDMA CAP alert polygons against hydro station catchments.
+                </small>
+            </div>
+
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <button type="submit" style="background: #89b4fa; color: #11111b; border: none; padding: 0.8rem 1.6rem; font-weight: bold; border-radius: 4px; cursor: pointer;">
+                    Save Proximity Threshold
+                </button>
+
+                <button type="button" onclick="triggerManualRefresh()" style="background: #a6e3a1; color: #11111b; border: none; padding: 0.8rem 1.6rem; font-weight: bold; border-radius: 4px; cursor: pointer;">
+                    🔄 Run Manual Forecast Ingestion
+                </button>
+            </div>
+        </form>
+
+        <hr style="border: 0; border-top: 1px solid #313244; margin: 2rem 0;">
+
+        <h3 style="color: #f9e2af;">Recent Forecast Runs & System Audit</h3>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 1rem; color: #cdd6f4;">
+            <thead>
+                <tr style="border-bottom: 1px solid #45475a; text-align: left;">
+                    <th style="padding: 0.6rem;">ID</th>
+                    <th style="padding: 0.6rem;">Model Time</th>
+                    <th style="padding: 0.6rem;">Fetched At</th>
+                    <th style="padding: 0.6rem;">RED</th>
+                    <th style="padding: 0.6rem;">YELLOW</th>
+                    <th style="padding: 0.6rem;">GREEN</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if latest_run and latest_run.run %}
+                <tr style="border-bottom: 1px solid #313244;">
+                    <td style="padding: 0.6rem;">#{{ latest_run.run.id }}</td>
+                    <td style="padding: 0.6rem;">{{ latest_run.run.model_run_time }}</td>
+                    <td style="padding: 0.6rem;">{{ latest_run.run.fetched_at }}</td>
+                    <td style="padding: 0.6rem; color: #f38ba8; font-weight: bold;">{{ latest_run.run.red_count }}</td>
+                    <td style="padding: 0.6rem; color: #fab387; font-weight: bold;">{{ latest_run.run.yellow_count }}</td>
+                    <td style="padding: 0.6rem; color: #a6e3a1; font-weight: bold;">{{ latest_run.run.green_count }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" style="padding: 0.6rem;">No forecast runs recorded yet.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function triggerManualRefresh() {
+    fetch('/admin/refresh', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => alert(data.message || 'Forecast refresh complete!'))
+        .catch(err => alert('Error: ' + err));
+}
+</script>
+{% endblock %}

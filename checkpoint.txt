@@ -1,0 +1,44 @@
+================================================================================
+NHPC + NDMA GEOALERT - GEOSPATIAL CATCHMENT SYSTEM CHECKPOINT
+================================================================================
+Timestamp: 2026-08-02
+Workspace Root: c:\code\nhpc
+
+--------------------------------------------------------------------------------
+1. DIRECTIVE & OBJECTIVE
+--------------------------------------------------------------------------------
+Implement a professional geospatial catchment system matching the NDMA GeoAlert spec:
+1. Spatial Engine: Store monitored assets as geographic points. Store catchments as GeoJSON polygons/multipolygons simplified using Shapely. Compute containment (INSIDE_CATCHMENT vs NEARBY_CATCHMENT with projected WGS84 geodesic distance).
+2. Backend Event Flow: Process weather/flood events, extract coordinates, attach catchment ID/name/risk/distance, and broadcast via WebSockets / SSE.
+3. Leaflet Layer Ordering Panes:
+   - Pane 1: Base map (CartoDB Dark Matter)
+   - Pane 2: Rivers (z-index 420)
+   - Pane 3: Catchments (z-index 430)
+   - Pane 4: Warning Overlays (z-index 440)
+   - Pane 5: Monitored Project Markers (z-index 450)
+4. Catchment Aesthetics & Status Colors:
+   - Fill opacity: 0.08–0.15
+   - Border opacity: 0.35–0.50, border width 1–2px, rounded joins
+   - Colors: Normal (#a6e3a1), Watch (#f9e2af), Warning (#fab387), Severe (#f38ba8)
+5. Interaction & Animation:
+   - Hover: Highlight boundary, display catchment name, monitored assets, 24h rain, river discharge, active warnings.
+   - Click: Lock side panel, zoom to polygon bounds with padding.
+   - Warning Animation: Subtle border stroke pulse (every 2.5s), no flashing fills, GPU friendly.
+
+--------------------------------------------------------------------------------
+2. CHECKLIST
+--------------------------------------------------------------------------------
+[ ] Phase 1: Spatial Engine Upgrade
+    - Add polygon geometry simplification (`Polygon.simplify(0.001)`).
+    - Implement GeoJSON caching & asset point spatial indexing.
+[ ] Phase 2: River Vector Service & Real-Time Event Pipeline
+    - Add `app/services/river_service.py` to serve GeoJSON river channels.
+    - Add WebSocket / SSE event broadcaster for instant warning updates.
+[ ] Phase 3: Leaflet Pane Order & Aesthetics Rebuild
+    - Configure custom Leaflet panes (`riversPane`, `catchmentsPane`, `warningOverlayPane`, `markerPane`).
+    - Apply status colors, rounded line joins, subtle translucent fills (0.08-0.15 opacity).
+[ ] Phase 4: Hover Tooltips, Click Zoom, and GPU Stroke Pulse
+    - Implement hover card showing monitored assets and rainfall.
+    - Implement smooth `map.fitBounds` on click.
+    - Add CSS SVG border pulse animation `@keyframes catchment-border-pulse`.
+================================================================================

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}NHPC Hydro Weather & NDMA Emergency Alert System{% endblock %}</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Leaflet.js CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Main Light Monochrome CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/map.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/projects.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/alerts.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+
+    <!-- Chart.js & Lucide Icons -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+</head>
+
+<body class="light-theme">
+    <nav class="navbar">
+        <div class="nav-left">
+            <div class="logo-flex">
+                <i data-lucide="shield-alert" class="logo-icon alert-red-text"></i>
+                <h2><a href="/">NHPC & NDMA Catchment Emergency Warning Terminal</a></h2>
+            </div>
+        </div>
+    </nav>
+
+    {% block content %}
+    {% endblock %}
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof lucide !== 'undefined' && typeof lucide.createIcons === 'function') {
+                lucide.createIcons();
+            }
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,695 @@
+/* Light Monochrome Dashboard UI Theme (White to Black) */
+
+.catchment-app-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 55px);
+    width: 100vw;
+    background: #f8f9fa;
+    overflow: hidden;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Top Catchment Summary Status Bar (Light Monochrome) */
+.catchment-top-bar {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    background: #ffffff;
+    border-bottom: 1px solid #e9ecef;
+    z-index: 10;
+}
+
+.catchment-stat-card {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.catchment-stat-card:hover, .catchment-stat-card.active {
+    border-color: #111827;
+    background: #e9ecef;
+}
+
+.card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    background: #ffffff;
+    border: 1px solid #dee2e6;
+    color: #111827;
+}
+
+.card-data {
+    display: flex;
+    flex-direction: column;
+}
+
+.card-num {
+    font-size: 1.1rem;
+    font-weight: 800;
+    line-height: 1.1;
+    color: #111827;
+}
+
+.card-title {
+    font-size: 0.68rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+/* Catchment Main Workspace Layout */
+.catchment-workspace {
+    display: flex;
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Unified Left Sidebar Container (Light Monochrome) */
+.catchment-nav-sidebar {
+    width: 440px;
+    background: #ffffff;
+    border-right: 1px solid #dee2e6;
+    display: flex;
+    flex-direction: column;
+    z-index: 5;
+    overflow: hidden;
+}
+
+.sidebar-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.sidebar-view.hidden {
+    display: none !important;
+}
+
+/* Search Box */
+.search-box {
+    position: relative;
+    padding: 0.75rem 0.8rem 0.4rem;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 0.65rem 0.8rem 0.65rem 2.2rem;
+    background: #f8f9fa;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    color: #111827;
+    font-size: 0.85rem;
+    font-family: inherit;
+    transition: border-color 0.2s;
+}
+
+.search-box input:focus {
+    outline: none;
+    border-color: #111827;
+}
+
+.search-icon {
+    position: absolute;
+    left: 1.4rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    color: #6b7280;
+}
+
+/* Risk Filter Pills (Light Monochrome Except Active Risk Color Highlights) */
+.risk-filter-pills {
+    display: flex;
+    gap: 0.3rem;
+    padding: 0.3rem 0.8rem 0.6rem;
+    overflow-x: auto;
+}
+
+.pill-btn {
+    padding: 0.3rem 0.65rem;
+    border-radius: 12px;
+    border: 1px solid #dee2e6;
+    background: #f8f9fa;
+    color: #495057;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+
+.pill-btn:hover, .pill-btn.active {
+    background: #e9ecef;
+    color: #111827;
+    border-color: #111827;
+}
+
+/* EXCEPTION: Retain Risk Badge Accents */
+.pill-btn.severe.active { background: rgba(220, 38, 38, 0.12); border-color: #dc2626; color: #dc2626; }
+.pill-btn.warning.active { background: rgba(234, 88, 12, 0.12); border-color: #ea580c; color: #ea580c; }
+.pill-btn.watch.active { background: rgba(217, 119, 6, 0.12); border-color: #d97706; color: #d97706; }
+.pill-btn.normal.active { background: rgba(37, 99, 235, 0.12); border-color: #2563eb; color: #2563eb; }
+
+/* Sidebar Tabs (Light Monochrome) */
+.sidebar-tab-switches {
+    display: flex;
+    border-bottom: 1px solid #dee2e6;
+    background: #f8f9fa;
+}
+
+.tab-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 0.6rem;
+    background: transparent;
+    border: none;
+    color: #6b7280;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+}
+
+.tab-btn.active {
+    color: #111827;
+    border-bottom-color: #111827;
+    background: #ffffff;
+}
+
+/* Tab Contents */
+.tab-content {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.6rem;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Catchment Cards List (Light Monochrome with Risk Left Border Accents) */
+.catchment-item-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0;
+    margin: 0;
+}
+
+.catchment-card {
+    background: #ffffff;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+}
+
+.catchment-card:hover, .catchment-card.active {
+    border-color: #111827;
+    background: #f8f9fa;
+}
+
+/* EXCEPTION: Retain Catchment Risk Colors */
+.catchment-card.risk-severe { border-left: 4px solid #dc2626; }
+.catchment-card.risk-warning { border-left: 4px solid #ea580c; }
+.catchment-card.risk-watch { border-left: 4px solid #d97706; }
+.catchment-card.risk-normal { border-left: 4px solid #2563eb; }
+
+.card-top {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+}
+
+/* EXCEPTION: Retain Risk Level Badges */
+.risk-badge {
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.badge-severe { background: rgba(220, 38, 38, 0.12); color: #dc2626; border: 1px solid #dc2626; }
+.badge-warning { background: rgba(234, 88, 12, 0.12); color: #ea580c; border: 1px solid #ea580c; }
+.badge-watch { background: rgba(217, 119, 6, 0.12); color: #d97706; border: 1px solid #d97706; }
+.badge-normal { background: rgba(37, 99, 235, 0.12); color: #2563eb; border: 1px solid #2563eb; }
+
+.catchment-title {
+    font-size: 0.9rem;
+    color: #111827;
+}
+
+.landslide-badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-bottom: 0.4rem;
+}
+
+.landslide-badge-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: rgba(220, 38, 38, 0.12);
+    border: 1px solid #dc2626;
+    color: #dc2626;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+}
+
+.card-sub {
+    display: flex;
+    gap: 0.8rem;
+    font-size: 0.73rem;
+    color: #6b7280;
+    margin-bottom: 0.4rem;
+}
+
+
+.card-metrics {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.73rem;
+    color: #374151;
+    padding-top: 0.4rem;
+    border-top: 1px solid #e9ecef;
+}
+
+/* Catchment-Grouped Alerts List */
+.alert-catchment-group {
+    background: #ffffff;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    margin-bottom: 0.6rem;
+    overflow: hidden;
+}
+
+.alert-catchment-group.risk-severe { border-left: 4px solid #dc2626; }
+.alert-catchment-group.risk-warning { border-left: 4px solid #ea580c; }
+.alert-catchment-group.risk-watch { border-left: 4px solid #d97706; }
+
+.alert-catchment-group .group-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    background: #f8f9fa;
+    cursor: pointer;
+}
+
+.group-river {
+    font-size: 0.7rem;
+    color: #6b7280;
+}
+
+.group-alerts-list {
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.alert-item {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.alert-item:hover {
+    background: #e9ecef;
+}
+
+.alert-icon { font-size: 0.9rem; color: #6b7280; }
+.alert-body strong { color: #111827; display: block; }
+.alert-body p { margin: 0.2rem 0; color: #374151; }
+.alert-meta { font-size: 0.68rem; color: #6b7280; }
+
+/* VIEW B: MERGED CATCHMENT DATA DETAIL INSPECTOR (Light Monochrome) */
+.detail-view-header {
+    padding: 0.8rem 1rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.back-to-list-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: #e9ecef;
+    border: 1px solid #ced4da;
+    color: #111827;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.45rem 0.8rem;
+    border-radius: 6px;
+    cursor: pointer;
+    width: 100%;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.back-to-list-btn:hover {
+    background: #dee2e6;
+    border-color: #111827;
+}
+
+.panel-title-area h2 {
+    font-size: 1.15rem;
+    color: #111827;
+    margin: 0.3rem 0 0.1rem;
+}
+
+.badge-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.catchment-id-text {
+    font-size: 0.72rem;
+    color: #6b7280;
+    font-weight: 600;
+}
+
+.panel-subtitle {
+    font-size: 0.78rem;
+    color: #6b7280;
+}
+
+.panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+/* Telemetry Grid (Light Monochrome) */
+.telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
+}
+
+.telemetry-card {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 0.6rem 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.t-val { font-size: 0.92rem; font-weight: 700; color: #111827; display: block; }
+.t-label { font-size: 0.68rem; color: #6b7280; }
+
+.t-icon-box {
+    width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    background: #ffffff;
+    border: 1px solid #dee2e6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #495057;
+}
+
+/* Panel Section Box (Light Monochrome) */
+.panel-section-box {
+    background: #ffffff;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 0.85rem;
+}
+
+.section-title {
+    font-size: 0.82rem;
+    color: #111827;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.chart-wrapper {
+    height: 160px;
+    position: relative;
+    margin-bottom: 0.5rem;
+}
+
+.rainfall-summary-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: #6b7280;
+    border-top: 1px solid #e9ecef;
+    padding-top: 0.4rem;
+}
+
+.rainfall-summary-row strong { color: #111827; }
+
+/* Gauge Status Bar (Light Monochrome) */
+.gauge-status-bar {
+    display: flex;
+    justify-content: space-between;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 0.6rem;
+    margin-bottom: 0.6rem;
+}
+
+.gauge-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.gauge-metric.highlight .g-val { color: #111827; font-weight: 800; font-size: 1rem; }
+.g-label { font-size: 0.65rem; color: #6b7280; text-transform: uppercase; }
+.g-val { font-size: 0.88rem; font-weight: 700; color: #374151; }
+
+/* Flow Metrics Row */
+.flow-metrics-row {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+}
+
+.flow-pill {
+    flex: 1;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 0.4rem;
+    font-size: 0.72rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.flow-pill span { color: #6b7280; font-size: 0.65rem; }
+.flow-pill strong { color: #111827; margin-top: 0.1rem; }
+
+.dam-status-callout {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #f8f9fa;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    color: #111827;
+}
+
+/* Projects Inside List */
+.projects-inside-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.project-item {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 0.6rem;
+}
+
+.project-item strong { display: block; color: #111827; font-size: 0.85rem; }
+.project-item span { font-size: 0.72rem; color: #6b7280; }
+
+/* Geographic Coverage */
+.districts-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+}
+
+.district-tag {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    color: #374151;
+}
+
+.panel-footer-meta {
+    font-size: 0.68rem;
+    color: #6b7280;
+    text-align: right;
+    border-top: 1px solid #e9ecef;
+    padding-top: 0.4rem;
+}
+
+/* Main Map Container */
+.catchment-map-section {
+    flex: 1;
+    position: relative;
+    height: 100%;
+}
+
+#map {
+    width: 100%;
+    height: 100%;
+    background: #f8f9fa;
+}
+
+.hidden { display: none !important; }
+
+/* Custom Leaflet Catchment Tooltip Card (Light Background) */
+.catchment-leaflet-tooltip {
+    background: #ffffff !important;
+    border: 1px solid #ced4da !important;
+    color: #111827 !important;
+    border-radius: 6px !important;
+    padding: 0.6rem 0.8rem !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+    font-family: 'Inter', sans-serif !important;
+}
+
+.catchment-leaflet-tooltip .tooltip-title {
+    font-weight: 700;
+    font-size: 0.88rem;
+    display: block;
+    margin-bottom: 0.2rem;
+}
+
+.catchment-leaflet-tooltip .tooltip-sub {
+    font-size: 0.72rem;
+    color: #6b7280;
+}
+
+/* EXCEPTION: Retain River Color */
+.leaflet-pane.riversPane path {
+    stroke: #0284c7 !important;
+    stroke-width: 2.5px !important;
+    stroke-opacity: 0.85 !important;
+    transition: stroke-width 0.2s ease, stroke-opacity 0.2s ease;
+}
+
+.leaflet-pane.riversPane path:hover {
+    stroke: #0369a1 !important;
+    stroke-width: 4.0px !important;
+    stroke-opacity: 1.0 !important;
+}
+
+/* Custom Clean Dam Badge Markers (Light Theme) */
+.dam-marker-pin {
+    background: #ffffff;
+    border: 1.5px solid #0284c7;
+    border-radius: 4px;
+    padding: 2px 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.dam-marker-pin:hover {
+    transform: translateY(-1px);
+    border-color: #111827;
+    z-index: 1000 !important;
+}
+
+/* EXCEPTION: Retain Dam Badge Risk Highlights */
+.dam-marker-pin.severe {
+    border-color: #dc2626;
+    background: rgba(220, 38, 38, 0.12);
+}
+
+.dam-marker-pin.warning {
+    border-color: #ea580c;
+    background: rgba(234, 88, 12, 0.12);
+}
+
+.dam-marker-pin.watch {
+    border-color: #d97706;
+    background: rgba(217, 119, 6, 0.12);
+}
+
+.dam-title-text {
+    font-size: 10px;
+    font-weight: 700;
+    color: #111827;
+    font-family: 'Inter', sans-serif;
+}
+
+.dam-mw-badge {
+    font-size: 9px;
+    background: #e9ecef;
+    color: #111827;
+    padding: 0px 4px;
+    border-radius: 3px;
+    font-weight: 700;
+}
+
+.icon-inline {
+    width: 12px;
+    height: 12px;
+    vertical-align: middle;
+    display: inline-block;
+}
