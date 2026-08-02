@@ -1,11 +1,11 @@
 services:
-  nhpc-warning-system:
+  app:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: nhpc-warning-system
     restart: unless-stopped
-    ports:
+    expose:
       - "8000"
     environment:
       - APP_PORT=8000
