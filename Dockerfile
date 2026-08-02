@@ -27,18 +27,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application source code and spatial datasets
-COPY app/ ./app/
-COPY run.py .
-COPY config.py .
-COPY database.py .
-COPY spatial_engine.py .
-COPY warning_service.py .
-COPY imd_ping.py .
-COPY update_forecasts.py .
-COPY ndma_service.py .
-COPY Catchment_NHPC.KML .
-COPY Catchment_NHPC.json .
+# Copy all application source code, python modules, and spatial datasets
+COPY . .
 
 # Create data directory for persistent SQLite database
 RUN mkdir -p /app/data
