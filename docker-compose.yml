@@ -6,7 +6,7 @@ services:
     container_name: nhpc-warning-system
     restart: unless-stopped
     ports:
-      - "80:"
+      - "80"
     environment:
       - APP_PORT=80
       - PYTHONUNBUFFERED=1
