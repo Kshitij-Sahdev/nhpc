@@ -102,8 +102,11 @@
                                 <span><i data-lucide="waves"></i> {{ c.river }}</span>
                                 <span><i data-lucide="map-pin"></i> {{ c.district }}, {{ c.state }}</span>
                             </div>
-                            {% if c.ndma_alerts %}
+                            {% if c.river_and_reservoir.high_inflow_alert or c.ndma_alerts %}
                             <div class="landslide-badge-row">
+                                {% if c.river_and_reservoir.high_inflow_alert %}
+                                <span class="landslide-badge-tag operational-alert-tag"><i data-lucide="alert-octagon"></i> OVER FRL / SPILLWAY OPEN</span>
+                                {% endif %}
                                 {% for alert in c.ndma_alerts %}
                                 <span class="landslide-badge-tag"><i data-lucide="alert-triangle"></i> {{ alert.event }}</span>
                                 {% endfor %}

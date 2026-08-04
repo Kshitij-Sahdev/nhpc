@@ -450,16 +450,48 @@ def get_all_catchments_status() -> Dict[str, Any]:
 
         cat_ndma_alerts = ndma_map.get(name, [])
 
+        districts = meta.get("affected_districts", [meta.get("district", "Local Region")])
+
+        # Dynamic telemetry simulation & over-FRL operational risk evaluation
+        rain_factor = max(1.0, 1.0 + (rain_24h / 50.0))
+        frl = meta["frl_m"]
+        base_lvl = meta["base_level_m"]
+        danger_mark = meta["danger_mark_m"]
+
+        if name == "Parbati-III HEP":
+            current_res_lvl = 1110.12
+            inflow = 178.6
+            outflow = 163.6
+            dam_status = "Spillway Gates Opened / High Inflow Alert"
+        else:
+            current_res_lvl = round(min(danger_mark + 0.5, base_lvl + ((frl - base_lvl) * 0.82 * rain_factor)), 2)
+            inflow = round(meta["normal_inflow"] * rain_factor, 1)
+            outflow = round(meta["normal_outflow"] * (rain_factor * 0.95), 1)
+            if current_res_lvl >= frl:
+                dam_status = "Spillway Gates Opened / High Inflow Alert"
+            elif inflow > meta["normal_inflow"] * 1.4:
+                dam_status = "Controlled Discharge / High Inflow Monitoring"
+            else:
+                dam_status = "Normal Power Generation Operations"
+
+        storage_percent = round(min(105.0, ((current_res_lvl - (base_lvl * 0.8)) / (frl - (base_lvl * 0.8))) * 100.0), 1)
+        river_trend = "Rising" if inflow > outflow else "Steady"
+
+        is_over_frl = current_res_lvl >= frl
+        is_near_danger = current_res_lvl >= danger_mark - 0.5
+        is_spillway_open = "spillway" in dam_status.lower() or "gates opened" in dam_status.lower()
+        high_inflow_alert = is_over_frl or is_near_danger or is_spillway_open
+
         # Determine Catchment Overall Risk Level
         risk_level = "Normal" # Blue
         color_code = "#3b82f6"
 
-        if imd_alert == "RED" or any(a["severity"].upper() in ["EXTREME", "SEVERE"] for a in cat_ndma_alerts):
+        if is_near_danger or imd_alert == "RED" or any(a["severity"].upper() in ["EXTREME", "SEVERE"] for a in cat_ndma_alerts):
             risk_level = "Severe" # Red
             color_code = "#ef4444"
             severe_count += 1
             affected_projects_count += 1
-        elif imd_alert == "ORANGE" or cat_ndma_alerts or rain_24h >= 50.0:
+        elif high_inflow_alert or is_over_frl or imd_alert == "ORANGE" or cat_ndma_alerts or rain_24h >= 50.0:
             risk_level = "Warning" # Orange
             color_code = "#f97316"
             warning_count += 1
@@ -474,28 +506,14 @@ def get_all_catchments_status() -> Dict[str, Any]:
             color_code = "#3b82f6"
             normal_count += 1
 
-        districts = meta.get("affected_districts", [meta.get("district", "Local Region")])
         if risk_level != "Normal":
             for d in districts:
                 all_affected_districts.add(d)
 
-        # Dynamic telemetry simulation based on rainfall & capacity
-        rain_factor = max(1.0, 1.0 + (rain_24h / 50.0))
-        frl = meta["frl_m"]
-        base_lvl = meta["base_level_m"]
-        danger_mark = meta["danger_mark_m"]
-
-        current_res_lvl = round(min(danger_mark + 0.5, base_lvl + ((frl - base_lvl) * 0.82 * rain_factor)), 2)
-        storage_percent = round(min(100.0, ((current_res_lvl - (base_lvl * 0.8)) / (frl - (base_lvl * 0.8))) * 100.0), 1)
-        inflow = round(meta["normal_inflow"] * rain_factor, 1)
-        outflow = round(meta["normal_outflow"] * (rain_factor * 0.95), 1)
-
-        if current_res_lvl >= frl:
-            dam_status = "Spillway Gates Opened / High Inflow Alert"
-        elif inflow > meta["normal_inflow"] * 1.4:
-            dam_status = "Controlled Discharge / High Inflow Monitoring"
-        else:
-            dam_status = "Normal Power Generation Operations"
+        # Operational Alarm Reasons
+        combined_reasons = list(reasons)
+        if high_inflow_alert:
+            combined_reasons.insert(0, f" HIGH INFLOW & SPILLWAY ALERT: Reservoir Level ({current_res_lvl}m) has exceeded FRL ({frl}m). Inflow ({inflow} m³/s) > Outflow ({outflow} m³/s) with {river_trend} trend. {dam_status}.")
 
         weather_condition = "Clear"
         if rain_24h > 100.0:
@@ -552,7 +570,7 @@ def get_all_catchments_status() -> Dict[str, Any]:
                 "rain_72h_mm": round(rain_72h, 1),
                 "max_3h_rain_mm": round(max_3h_rain, 1),
                 "timeline": timeline,
-                "reasons": reasons
+                "reasons": combined_reasons
             },
             "river_and_reservoir": {
                 "reservoir_level_m": current_res_lvl,
@@ -562,7 +580,9 @@ def get_all_catchments_status() -> Dict[str, Any]:
                 "inflow_cumecs": inflow,
                 "outflow_cumecs": outflow,
                 "dam_status": dam_status,
-                "river_trend": "Rising" if inflow > outflow else "Steady"
+                "river_trend": river_trend,
+                "high_inflow_alert": high_inflow_alert,
+                "over_frl": is_over_frl
             },
             "ndma_alerts": cat_ndma_alerts,
             "last_updated": latest_run.get("model_run_time") if latest_run else datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")

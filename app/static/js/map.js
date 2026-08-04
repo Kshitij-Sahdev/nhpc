@@ -17,6 +17,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.lucide) {
         lucide.createIcons();
     }
+
+    // Keyboard navigation: Escape key closes catchment detail inspector panel
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+            const detailView = document.getElementById('sidebar-view-detail');
+            if (detailView && !detailView.classList.contains('hidden')) {
+                closeSidePanel();
+            }
+        }
+    });
 });
 
 function initMap() {
@@ -279,18 +289,57 @@ function populateSidePanel(c) {
 
     // River & Reservoir
     document.getElementById('panel-frl').innerText = `${c.river_and_reservoir.frl_m} m`;
-    document.getElementById('panel-res-level').innerText = `${c.river_and_reservoir.reservoir_level_m} m (${c.river_and_reservoir.storage_capacity_percent}%)`;
+    
+    const resLevelEl = document.getElementById('panel-res-level');
+    resLevelEl.innerText = `${c.river_and_reservoir.reservoir_level_m} m (${c.river_and_reservoir.storage_capacity_percent}%)`;
+    if (c.river_and_reservoir.over_frl || c.river_and_reservoir.high_inflow_alert) {
+        resLevelEl.style.color = '#ef4444';
+        resLevelEl.style.fontWeight = 'bold';
+    } else {
+        resLevelEl.style.color = '';
+        resLevelEl.style.fontWeight = '';
+    }
+
     document.getElementById('panel-danger-mark').innerText = `${c.river_and_reservoir.danger_mark_m} m`;
     document.getElementById('panel-inflow').innerText = `${c.river_and_reservoir.inflow_cumecs} m³/s`;
     document.getElementById('panel-outflow').innerText = `${c.river_and_reservoir.outflow_cumecs} m³/s`;
-    document.getElementById('panel-river-trend').innerText = c.river_and_reservoir.river_trend;
+    
+    const trendEl = document.getElementById('panel-river-trend');
+    trendEl.innerText = c.river_and_reservoir.river_trend;
+    if (c.river_and_reservoir.river_trend === 'Rising') {
+        trendEl.style.color = '#ef4444';
+    } else {
+        trendEl.style.color = '';
+    }
     
     const damStatusEl = document.getElementById('panel-dam-status');
     damStatusEl.querySelector('span').innerText = c.river_and_reservoir.dam_status;
+    if (c.river_and_reservoir.high_inflow_alert) {
+        damStatusEl.className = 'dam-status-callout high-inflow-alert-active';
+    } else {
+        damStatusEl.className = 'dam-status-callout';
+    }
 
-    // Render NDMA Disaster Alerts
+    // Render NDMA Disaster & Telemetry Operational Alerts
     const alertsContainer = document.getElementById('panel-ndma-alerts-list');
     alertsContainer.innerHTML = '';
+
+    if (c.river_and_reservoir.high_inflow_alert) {
+        const opDiv = document.createElement('div');
+        opDiv.className = 'alert-item telemetry-operational-alert';
+        opDiv.style.borderLeft = '4px solid #ef4444';
+        opDiv.style.background = '#fef2f2';
+        opDiv.innerHTML = `
+            <div class="alert-icon" style="color: #ef4444;"><i data-lucide="alert-octagon"></i></div>
+            <div class="alert-body">
+                <strong style="color: #dc2626;">[OPERATIONAL WARNING] SPILLWAY GATES OPENED / HIGH INFLOW ALERT</strong>
+                <p style="font-weight: 600; color: #991b1b;">Water Level: ${c.river_and_reservoir.reservoir_level_m} m (Full Reservoir Level: ${c.river_and_reservoir.frl_m} m) — 100%+ Capacity Exceeded</p>
+                <p style="font-size: 0.8rem; color: #7f1d1d;">Inflow (${c.river_and_reservoir.inflow_cumecs} m³/s) > Outflow (${c.river_and_reservoir.outflow_cumecs} m³/s) with Rising Trend. Controlled spillway release in progress.</p>
+            </div>
+        `;
+        alertsContainer.appendChild(opDiv);
+    }
+
     if (c.ndma_alerts && c.ndma_alerts.length > 0) {
         c.ndma_alerts.forEach(a => {
             const severityColor = (a.severity === 'Severe' || a.severity === 'Extreme') ? '#dc2626' : ((a.severity === 'Warning') ? '#ea580c' : '#d97706');
@@ -307,7 +356,7 @@ function populateSidePanel(c) {
             `;
             alertsContainer.appendChild(div);
         });
-    } else {
+    } else if (!c.river_and_reservoir.high_inflow_alert) {
         alertsContainer.innerHTML = `<div class="empty-alerts" style="font-size: 0.78rem; color: #6b7280;">No active emergency disaster alerts for this catchment.</div>`;
     }
 
