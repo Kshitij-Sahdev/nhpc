@@ -102,10 +102,15 @@
                                 <span><i data-lucide="waves"></i> {{ c.river }}</span>
                                 <span><i data-lucide="map-pin"></i> {{ c.district }}, {{ c.state }}</span>
                             </div>
-                            {% if c.river_and_reservoir.high_inflow_alert or c.ndma_alerts %}
+                            {% if c.weather.imd_alert_level != 'GREEN' or c.rainfall_forecast.rain_24h_mm >= 15.0 or c.river_and_reservoir.high_inflow_alert or c.ndma_alerts %}
                             <div class="landslide-badge-row">
+                                {% if c.weather.imd_alert_level != 'GREEN' or c.rainfall_forecast.rain_24h_mm >= 15.0 %}
+                                <span class="landslide-badge-tag imd-alert-tag badge-imd-{{ c.weather.imd_alert_level | lower }}">
+                                    <i data-lucide="cloud-rain"></i> IMD {{ c.weather.imd_alert_level }}: {{ c.rainfall_forecast.rain_24h_mm }}mm Rain
+                                </span>
+                                {% endif %}
                                 {% if c.river_and_reservoir.high_inflow_alert %}
-                                <span class="landslide-badge-tag operational-alert-tag"><i data-lucide="alert-octagon"></i> OVER FRL / SPILLWAY OPEN</span>
+                                <span class="landslide-badge-tag operational-alert-tag"><i data-lucide="info"></i> OVER FRL / SPILLWAY OPEN</span>
                                 {% endif %}
                                 {% for alert in c.ndma_alerts %}
                                 <span class="landslide-badge-tag"><i data-lucide="alert-triangle"></i> {{ alert.event }}</span>

@@ -320,15 +320,61 @@ function populateSidePanel(c) {
         damStatusEl.className = 'dam-status-callout';
     }
 
-    // Render NDMA Disaster & Telemetry Operational Alerts
+    // Render IMD Weather, NDMA Disaster & Telemetry Operational Alerts
     const alertsContainer = document.getElementById('panel-ndma-alerts-list');
     alertsContainer.innerHTML = '';
 
+    let alertCount = 0;
+
+    // 1. IMD Heavy Rainfall & Flash Flood Alerts
+    if (c.imd_alerts && c.imd_alerts.length > 0) {
+        c.imd_alerts.forEach(a => {
+            alertCount++;
+            const imdColor = (a.alert_level === 'RED' || a.severity === 'Extreme') ? '#ef4444' : ((a.alert_level === 'ORANGE' || a.severity === 'Severe') ? '#f97316' : '#eab308');
+            const div = document.createElement('div');
+            div.className = 'alert-item imd-alert-card';
+            div.style.borderLeft = `4px solid ${imdColor}`;
+            div.style.background = (a.alert_level === 'RED') ? '#fef2f2' : ((a.alert_level === 'ORANGE') ? '#fff7ed' : '#fefce8');
+            div.innerHTML = `
+                <div class="alert-icon" style="color: ${imdColor};"><i data-lucide="cloud-rain"></i></div>
+                <div class="alert-body">
+                    <strong style="color: ${imdColor};">[IMD ${a.alert_level || 'WARNING'}] ${a.event}</strong>
+                    <p style="font-weight: 700; color: #111827; margin: 2px 0;">${a.headline}</p>
+                    <p style="font-size: 0.78rem; color: #374151; margin-bottom: 3px;">${a.description}</p>
+                    <span class="alert-meta" style="color: #6b7280;">IMD NWP Forecast | 24h Rain: <strong>${a.rain_24h_mm} mm</strong></span>
+                </div>
+            `;
+            alertsContainer.appendChild(div);
+        });
+    }
+
+    // 2. NDMA Sachet Emergency Disaster Alerts
+    if (c.ndma_alerts && c.ndma_alerts.length > 0) {
+        c.ndma_alerts.forEach(a => {
+            alertCount++;
+            const severityColor = (a.severity === 'Severe' || a.severity === 'Extreme') ? '#dc2626' : ((a.severity === 'Warning') ? '#ea580c' : '#d97706');
+            const div = document.createElement('div');
+            div.className = `alert-item ndma-alert`;
+            div.style.borderLeft = `4px solid ${severityColor}`;
+            div.innerHTML = `
+                <div class="alert-icon" style="color: ${severityColor};"><i data-lucide="alert-triangle"></i></div>
+                <div class="alert-body">
+                    <strong style="color: ${severityColor};">[NDMA ${a.severity.toUpperCase()}] ${a.event}</strong>
+                    <p style="font-weight: 600; color: #111827;">${a.headline}</p>
+                    <span class="alert-meta" style="color: #6b7280;">Distance: ${a.distance_km} km | Area: ${a.area_description}</span>
+                </div>
+            `;
+            alertsContainer.appendChild(div);
+        });
+    }
+
+    // 3. Telemetry Reservoir Operational Flag
     if (c.river_and_reservoir.high_inflow_alert) {
+        alertCount++;
         const opDiv = document.createElement('div');
         opDiv.className = 'alert-item telemetry-operational-alert';
         opDiv.style.borderLeft = '4px solid #f59e0b';
-        opDiv.style.background = '#fffbebe';
+        opDiv.style.background = '#fffbe6';
         opDiv.innerHTML = `
             <div class="alert-icon" style="color: #d97706;"><i data-lucide="info"></i></div>
             <div class="alert-body">
@@ -340,24 +386,8 @@ function populateSidePanel(c) {
         alertsContainer.appendChild(opDiv);
     }
 
-    if (c.ndma_alerts && c.ndma_alerts.length > 0) {
-        c.ndma_alerts.forEach(a => {
-            const severityColor = (a.severity === 'Severe' || a.severity === 'Extreme') ? '#dc2626' : ((a.severity === 'Warning') ? '#ea580c' : '#d97706');
-            const div = document.createElement('div');
-            div.className = `alert-item ndma-alert`;
-            div.style.borderLeft = `4px solid ${severityColor}`;
-            div.innerHTML = `
-                <div class="alert-icon" style="color: ${severityColor};"><i data-lucide="alert-triangle"></i></div>
-                <div class="alert-body">
-                    <strong style="color: ${severityColor};">[${a.severity.toUpperCase()}] ${a.event}</strong>
-                    <p style="font-weight: 600; color: #111827;">${a.headline}</p>
-                    <span class="alert-meta" style="color: #6b7280;">Distance: ${a.distance_km} km | Area: ${a.area_description}</span>
-                </div>
-            `;
-            alertsContainer.appendChild(div);
-        });
-    } else if (!c.river_and_reservoir.high_inflow_alert) {
-        alertsContainer.innerHTML = `<div class="empty-alerts" style="font-size: 0.78rem; color: #6b7280;">No active emergency disaster alerts for this catchment.</div>`;
+    if (alertCount === 0) {
+        alertsContainer.innerHTML = `<div class="empty-alerts" style="font-size: 0.78rem; color: #6b7280;">No active IMD weather warnings or emergency disaster alerts for this catchment.</div>`;
     }
 
     // Projects Inside
