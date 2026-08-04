@@ -314,10 +314,16 @@
 {% endblock %}
 
 {% block scripts %}
+<script id="catchments-json" type="application/json">
+    {{ catchments | tojson | safe }}
+</script>
+<script id="summary-json" type="application/json">
+    {{ catchment_summary | tojson | safe }}
+</script>
 <script>
     // Pass backend catchment JSON payload directly to map.js
-    window.INITIAL_CATCHMENTS = {{ catchments | tojson }};
-    window.INITIAL_SUMMARY = {{ catchment_summary | tojson }};
+    window.INITIAL_CATCHMENTS = JSON.parse(document.getElementById('catchments-json').textContent || '[]');
+    window.INITIAL_SUMMARY = JSON.parse(document.getElementById('summary-json').textContent || '{}');
 </script>
 <script src="{{ url_for('static', filename='js/map.js') }}"></script>
 {% endblock %}
