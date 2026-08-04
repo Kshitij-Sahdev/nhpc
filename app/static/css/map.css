@@ -579,6 +579,12 @@
     border: 1px solid #ca8a04 !important;
 }
 
+.badge-imd-green {
+    background: #dcfce7 !important;
+    color: #166534 !important;
+    border: 1px solid #bbf7d0 !important;
+}
+
 .imd-alert-card {
     border-radius: 6px;
     padding: 0.6rem;
