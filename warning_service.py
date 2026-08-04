@@ -9,7 +9,7 @@ Combines:
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 import database
 from ndma_service import fetch_ndma_alerts
 from spatial_engine import spatial_engine

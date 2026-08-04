@@ -9,17 +9,12 @@ Serves:
 """
 
 import os
-import sys
 import time
-import json
-from datetime import datetime, timezone
-from typing import Any, Dict
 
-from flask import Flask, Blueprint, request, jsonify, render_template_string, send_from_directory, redirect, url_for, session
+from flask import Flask, Blueprint, request, jsonify, render_template_string, send_from_directory
 
 import database
 import warning_service
-import ndma_service
 from spatial_engine import spatial_engine
 from log import setup_logging, get_logger
 from config import get_settings
@@ -37,6 +32,14 @@ database.init_db()
 # Create Flask App
 app = Flask(__name__, static_folder="web", static_url_path="")
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "nhpc-secret-key-2026-catppuccin")
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    return response
 
 # ---------------------------------------------------------------------------
 # Blueprints Definition
@@ -133,12 +136,18 @@ def legacy_api_forecast():
 
     try:
         lat, lon = float(lat_str), float(lon_str)
+        if not (5.0 <= lat <= 40.0 and 65.0 <= lon <= 100.0):
+            return jsonify({"error": "Coordinates out of bounds"}), 400
+    except ValueError:
+        return jsonify({"error": "Invalid coordinates"}), 400
+
+    try:
         import imd_ping
         import update_forecasts
 
-        start_ist = imd_ping.get_latest_model_run_time()
+        start_ist = imd_ping.get_model()
         imd_data = imd_ping.fetch_imd_mausamgram(lat, lon)
-        forecast_analysis = update_forecasts.analyze_forecast(name, imd_data, start_ist)
+        forecast_analysis = update_forecasts.analyze_forecast(imd_data, start_ist)
 
         query_id = f"custom-{int(lat*1000)}-{int(lon*1000)}"
         database.record_on_demand_query(

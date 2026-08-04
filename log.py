@@ -20,7 +20,6 @@ Usage:
 import logging
 import logging.handlers
 import sys
-from typing import Optional
 
 
 def setup_logging(

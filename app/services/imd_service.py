@@ -5,12 +5,8 @@ Queries IMD Mausamgram 0.125° grid 5-day NWP forecasts, analyzes 120h weather t
 and evaluates weather warning levels (GREEN/YELLOW/RED).
 """
 
-import os
-import json
 import logging
-from datetime import datetime, timezone
-from typing import Any, Dict, List
-import imd_ping
+from typing import Any, Dict
 import update_forecasts
 from app.services import database
 from app.services.warning_service import generate_integrated_warnings

@@ -11,12 +11,11 @@ Uses Shapely and PyProj (WGS84 ellipsoid) to perform high-precision geospatial o
 """
 
 import os
-import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple, Any
 import logging
 
 try:
-    from shapely.geometry import Point, Polygon, MultiPolygon, mapping
+    from shapely.geometry import Point, Polygon
     from shapely.ops import nearest_points
     from pyproj import Geod
     SHAPELY_AVAILABLE = True

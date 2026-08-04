@@ -41,9 +41,6 @@ except ImportError:
         def inc(self, *args, **kwargs):
             pass
 
-        def dec(self, *args, **kwargs):
-            pass
-
         def set(self, *args, **kwargs):
             pass
 
@@ -57,31 +54,8 @@ except ImportError:
     Histogram = _NoOp  # type: ignore[assignment, misc]
     CONTENT_TYPE_LATEST = "text/plain; charset=utf-8"
 
-    def generate_latest(registry=None) -> bytes:  # type: ignore[misc]
+    def generate_latest() -> bytes:  # type: ignore[misc]
         return b"# prometheus_client not installed\n"
-
-
-# ---------------------------------------------------------------------------
-# HTTP / API Metrics
-# ---------------------------------------------------------------------------
-
-HTTP_REQUEST_DURATION = Histogram(
-    "nhpc_http_request_duration_seconds",
-    "HTTP request latency in seconds",
-    ["method", "endpoint", "status_code"],
-)
-
-HTTP_REQUEST_TOTAL = Counter(
-    "nhpc_http_requests_total",
-    "Total number of HTTP requests processed",
-    ["method", "endpoint", "status_code"],
-)
-
-HTTP_ERROR_TOTAL = Counter(
-    "nhpc_http_errors_total",
-    "Total number of HTTP error responses (4xx/5xx)",
-    ["method", "endpoint", "status_code"],
-)
 
 # ---------------------------------------------------------------------------
 # Forecast Scraper Metrics

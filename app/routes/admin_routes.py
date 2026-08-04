@@ -2,7 +2,7 @@
 Admin Management Portal Blueprint.
 """
 
-from flask import Blueprint, jsonify, render_template, request, redirect, url_for, session
+from flask import Blueprint, jsonify, render_template, request, redirect, url_for
 from app.services import database, imd_service
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")

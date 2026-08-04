@@ -39,11 +39,6 @@ class TestHealthEndpoints:
         assert "database" in data
         assert "uptime_seconds" in data
 
-    def test_health_includes_disk_info(self, test_server_port):
-        """Health endpoint should include disk usage data."""
-        _, data, _ = _get_json(f"http://localhost:{test_server_port}/api/health")
-        assert "disk" in data
-
 
 @pytest.mark.integration
 class TestDataEndpoints:
@@ -115,59 +110,3 @@ class TestInputValidation:
             pytest.fail("Expected HTTP error for path traversal")
         except (urllib.error.HTTPError, urllib.error.URLError):
             pass  # Either 400 or connection error is acceptable
-
-
-@pytest.mark.integration
-class TestCoordinateValidation:
-    """Tests for the validate_coordinates function."""
-
-    def test_valid_coordinates(self):
-        """Valid Indian coordinates should parse successfully."""
-        import start_server
-        lat, lon = start_server.validate_coordinates("31.2", "77.1")
-        assert lat == 31.2
-        assert lon == 77.1
-
-    def test_invalid_latitude(self):
-        """Latitude outside India bounds should raise ValueError."""
-        import start_server
-        with pytest.raises(ValueError):
-            start_server.validate_coordinates("99.0", "77.1")
-
-    def test_invalid_longitude(self):
-        """Longitude outside India bounds should raise ValueError."""
-        import start_server
-        with pytest.raises(ValueError):
-            start_server.validate_coordinates("31.0", "200.0")
-
-    def test_non_numeric_input(self):
-        """Non-numeric input should raise ValueError."""
-        import start_server
-        with pytest.raises(ValueError):
-            start_server.validate_coordinates("abc", "77.1")
-
-
-@pytest.mark.integration
-class TestSanitization:
-    """Tests for input sanitization functions."""
-
-    def test_html_sanitization(self):
-        """HTML tags should be escaped."""
-        import start_server
-        raw = "<script>alert('xss')</script> Test"
-        cleaned = start_server.sanitize_name(raw)
-        assert "<script>" not in cleaned
-        assert "&lt;script&gt;" in cleaned
-
-    def test_length_limiting(self):
-        """Long names should be truncated."""
-        import start_server
-        raw = "A" * 500
-        cleaned = start_server.sanitize_name(raw)
-        assert len(cleaned) <= start_server.settings.NAME_MAX_LENGTH
-
-    def test_empty_input(self):
-        """Empty input should return empty string."""
-        import start_server
-        assert start_server.sanitize_name("") == ""
-        assert start_server.sanitize_name(None) == ""

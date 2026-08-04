@@ -6,7 +6,6 @@ analysis logic or IMD response format changes. If IMD changes their
 API response structure, these tests will fail — alerting us to adapt.
 """
 
-import json
 import os
 import sys
 from datetime import datetime

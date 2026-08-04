@@ -6,8 +6,6 @@ Tests KML parsing, name cleaning, and coordinate downsampling.
 
 import os
 import sys
-import tempfile
-from typing import List
 
 import pytest
 
@@ -141,11 +139,11 @@ class TestCleanName:
 
     def test_known_mappings(self):
         """Known abbreviations should be resolved."""
-        assert update_forecasts.clean_name("TanakpurCorrected", "doc.kml") == "Tanakpur"
-        assert update_forecasts.clean_name("nbpdam", "doc.kml") == "Nimoo Bazgo"
-        assert update_forecasts.clean_name("ChutakPS", "doc.kml") == "Chutak"
-        assert update_forecasts.clean_name("Uri_I", "doc.kml") == "Uri I"
-        assert update_forecasts.clean_name("Uri_II", "doc.kml") == "Uri II"
+        assert update_forecasts.clean_name("TanakpurCorrected", "doc.kml") == "Tanakpur HEP"
+        assert update_forecasts.clean_name("nbpdam", "doc.kml") == "Nimoo Bazgo HEP"
+        assert update_forecasts.clean_name("ChutakPS", "doc.kml") == "Chutak Power Station"
+        assert update_forecasts.clean_name("Uri_I", "doc.kml") == "Uri-I Power Station"
+        assert update_forecasts.clean_name("Uri_II", "doc.kml") == "Uri-II Power Station"
 
     def test_underscores_to_spaces(self):
         """Underscores in names should be converted to spaces."""
@@ -156,22 +154,22 @@ class TestCleanName:
     def test_none_name_uses_doc(self):
         """None placemark name should fall back to document name."""
         result = update_forecasts.clean_name(None, "Chamera-I.kml")
-        assert result == "Chamera-I"
+        assert result == "Chamera-I HEP"
 
     def test_unnamed_uses_doc(self):
         """'Unnamed' should fall back to document name."""
         result = update_forecasts.clean_name("Unnamed", "Parbati-III.kml")
-        assert result == "Parbati-III"
+        assert result == "Parbati-III HEP"
 
     def test_disambiguation_project(self):
         """Kishanganga in KML should get (Project) suffix."""
         result = update_forecasts.clean_name("Kishanganga", "test.kml")
-        assert result == "Kishanganga (Project)"
+        assert result == "Kishanganga HEP (Project)"
 
     def test_disambiguation_catchment(self):
         """Kishanganga in SHP should get (Catchment) suffix."""
         result = update_forecasts.clean_name("Kishanganga", "test.shp")
-        assert result == "Kishanganga (Catchment)"
+        assert result == "Kishanganga HEP (Catchment)"
 
 
 class TestDownsampleCoordinates:

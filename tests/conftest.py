@@ -7,16 +7,13 @@ sample data, and test server lifecycle management.
 
 import os
 import sys
-import json
 import time
-import shutil
 import socket
-import tempfile
 import threading
-import socketserver
 from datetime import datetime
 from typing import Any, Dict, Generator, List
 
+from werkzeug.serving import make_server
 import pytest
 
 # Ensure project root is on the Python path
@@ -90,52 +87,6 @@ def sample_forecast_green() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def sample_forecast_yellow() -> Dict[str, Any]:
-    """Returns a mock IMD forecast response that should trigger YELLOW alert."""
-    return {
-        "apcp": [5.0, 10.0, 18.0, 8.0, 6.0, 3.0, 2.0, 1.0] * 5,  # Peak > 15mm
-        "temp": [22.0, 24.0, 26.0, 28.0, 27.0, 25.0, 23.0, 22.0] * 5,
-        "wspd": [5.0, 8.0, 10.0, 7.0, 5.0, 4.0, 3.0, 2.0] * 5,
-        "gust": [8.0, 12.0, 14.0, 10.0, 8.0, 6.0, 5.0, 4.0] * 5,
-        "rh": [70.0, 80.0, 85.0, 90.0, 85.0, 80.0, 75.0, 70.0] * 5,
-        "tcdc": [40.0, 60.0, 80.0, 90.0, 80.0, 60.0, 40.0, 20.0] * 5,
-    }
-
-
-@pytest.fixture
-def sample_forecast_red() -> Dict[str, Any]:
-    """Returns a mock IMD forecast response that should trigger RED alert."""
-    return {
-        "apcp": [10.0, 20.0, 35.0, 25.0, 15.0, 10.0, 5.0, 3.0] * 5,  # Peak > 30mm
-        "temp": [20.0, 22.0, 24.0, 26.0, 25.0, 23.0, 21.0, 20.0] * 5,
-        "wspd": [10.0, 15.0, 20.0, 15.0, 10.0, 8.0, 5.0, 3.0] * 5,
-        "gust": [15.0, 22.0, 28.0, 20.0, 15.0, 12.0, 8.0, 5.0] * 5,
-        "rh": [80.0, 85.0, 90.0, 95.0, 90.0, 85.0, 80.0, 75.0] * 5,
-        "tcdc": [60.0, 80.0, 95.0, 100.0, 95.0, 80.0, 60.0, 40.0] * 5,
-    }
-
-
-@pytest.fixture
-def sample_imd_api_response() -> Dict[str, Any]:
-    """Returns a full mock IMD API response (as returned by imd_ping.get_forecast)."""
-    return {
-        "original": {"lat": 31.2, "lon": 77.1},
-        "gfs_grid": {"lat": 31.25, "lon": 77.125},
-        "model": "2026073000",
-        "forecast": {
-            "apcp": [0.0, 1.5, 3.0, 2.0, 0.5, 0.0, 1.0, 0.5] * 5,
-            "temp": [22.0, 24.0, 26.0, 28.0, 27.0, 25.0, 23.0, 22.0] * 5,
-            "wspd": [2.0, 3.0, 4.0, 3.0, 2.0, 3.0, 2.0, 1.0] * 5,
-            "gust": [4.0, 5.0, 6.0, 5.0, 4.0, 5.0, 4.0, 3.0] * 5,
-            "rh": [60.0, 65.0, 70.0, 75.0, 70.0, 65.0, 60.0, 55.0] * 5,
-            "tcdc": [20.0, 30.0, 40.0, 50.0, 40.0, 30.0, 20.0, 10.0] * 5,
-        },
-        "cached": False,
-        "stale": False,
-    }
-
-
-@pytest.fixture
 def forecast_start_time() -> datetime:
     """Returns a fixed forecast start time for deterministic testing."""
     return datetime(2026, 7, 30, 5, 30)
@@ -175,16 +126,14 @@ def test_server_port(initialized_db) -> Generator[int, None, None]:
     # Reload settings with the patched DB path
     start_server.settings = config.get_settings()
 
-    socketserver.TCPServer.allow_reuse_address = True
-    httpd = socketserver.ThreadingTCPServer(("", port), start_server.Handler)
-    server_thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    server = make_server("127.0.0.1", port, start_server.app)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
     time.sleep(0.3)
 
     yield port
 
-    httpd.shutdown()
-    httpd.server_close()
+    server.shutdown()
 
     # Restore original DB_PATH
     if old_db_path is None:

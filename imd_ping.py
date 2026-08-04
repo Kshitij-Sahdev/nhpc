@@ -27,7 +27,7 @@ import requests
 from log import get_logger
 from config import get_settings
 from metrics import IMD_REQUEST_DURATION, IMD_REQUEST_TOTAL, IMD_CACHE_HITS
-from exceptions import IMDConnectionError, IMDResponseError
+from exceptions import IMDConnectionError
 
 logger = get_logger("nhpc.imd")
 

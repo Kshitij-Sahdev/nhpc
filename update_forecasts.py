@@ -15,7 +15,6 @@ Usage:
 """
 
 import os
-import sys
 import json
 import time
 import xml.etree.ElementTree as ET
@@ -36,7 +35,7 @@ from metrics import (
     ALERT_TRANSITIONS_TOTAL,
     NOTIFICATION_TOTAL,
 )
-from exceptions import KMLParseError, NotificationError
+from exceptions import KMLParseError
 
 logger = get_logger("nhpc.forecasts")
 

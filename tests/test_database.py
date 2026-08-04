@@ -5,7 +5,6 @@ Tests schema initialization, CRUD operations, data cleanup,
 and error handling for the SQLite database module.
 """
 
-import json
 import os
 import sys
 
@@ -217,7 +216,6 @@ class TestDataCleanup:
             (model_run_time, fetched_at, total_plants, red_count, yellow_count, green_count, unknown_count)
             VALUES (?, datetime('now', '-100 days'), 1, 0, 0, 1, 0);
         """, ("2026-04-20 06:00",))
-        old_run_id = cursor.lastrowid
 
         # Insert a recent forecast run
         cursor.execute("""

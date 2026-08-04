@@ -10,7 +10,7 @@ Combines:
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from app.services import database
 from app.services.ndma_service import fetch_ndma_alerts
 from app.services.spatial_engine import spatial_engine

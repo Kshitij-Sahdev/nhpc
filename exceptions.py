@@ -40,18 +40,6 @@ class IMDResponseError(NHPCError):
     """
 
 
-# ---------------------------------------------------------------------------
-# Forecast Processing Errors
-# ---------------------------------------------------------------------------
-
-class ForecastAnalysisError(NHPCError):
-    """Raised when forecast data cannot be analyzed.
-
-    This covers missing required fields, all-NaN data arrays, or
-    invalid time ranges in the forecast payload.
-    """
-
-
 class KMLParseError(NHPCError):
     """Raised when the KML/SHP boundary file cannot be parsed.
 
@@ -70,18 +58,6 @@ class DatabaseError(NHPCError):
     This covers connection failures, schema initialization errors,
     and query execution failures. The original SQLite exception is
     chained via ``raise DatabaseError(...) from original``.
-    """
-
-
-# ---------------------------------------------------------------------------
-# Configuration Errors
-# ---------------------------------------------------------------------------
-
-class ConfigurationError(NHPCError):
-    """Raised when application configuration is invalid or missing.
-
-    This covers missing required environment variables, out-of-range
-    values, and type coercion failures during startup validation.
     """
 
 

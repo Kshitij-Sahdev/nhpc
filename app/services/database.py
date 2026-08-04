@@ -8,10 +8,8 @@ project proximity warnings, and system settings.
 
 import os
 import json
-import time
 import sqlite3
 import contextlib
-from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 import logging
 

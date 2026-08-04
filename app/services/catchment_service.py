@@ -13,10 +13,9 @@ Provides complete catchment-first aggregation:
 2. Powers the Map-First UI dashboard, catchment side panel, and catchment-grouped alert views.
 """
 
-import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 from app.services import database
 from app.services.spatial_engine import spatial_engine
 
@@ -390,8 +389,6 @@ def get_all_catchments_status() -> Dict[str, Any]:
         from app.services.ndma_service import fetch_ndma_alerts
         ndma_alerts = fetch_ndma_alerts()
         database.save_ndma_alerts(ndma_alerts)
-
-    active_warnings = database.get_active_project_warnings()
 
     forecast_map = {}
     if latest_run and "forecasts" in latest_run:

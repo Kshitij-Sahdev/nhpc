@@ -6,7 +6,6 @@ Usage:
 """
 
 import os
-import sys
 from log import setup_logging, get_logger
 from config import get_settings
 from app import create_app

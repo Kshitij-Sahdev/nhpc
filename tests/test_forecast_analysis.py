@@ -10,8 +10,6 @@ import sys
 from datetime import datetime
 from typing import Dict, Any
 
-import pytest
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import update_forecasts
 
@@ -201,14 +199,14 @@ class TestUtilityFunctions:
 
     def test_clean_name_mapping(self):
         """clean_name should apply known name mappings."""
-        assert update_forecasts.clean_name("TanakpurCorrected", "doc.kml") == "Tanakpur"
-        assert update_forecasts.clean_name("SubLowdam", "doc.kml") == "Subansiri Lower"
-        assert update_forecasts.clean_name("tld4", "doc.kml") == "Teesta Low Dam IV"
+        assert update_forecasts.clean_name("TanakpurCorrected", "doc.kml") == "Tanakpur HEP"
+        assert update_forecasts.clean_name("SubLowdam", "doc.kml") == "Subansiri Lower HEP"
+        assert update_forecasts.clean_name("tld4", "doc.kml") == "Teesta Low Dam IV HEP"
 
     def test_clean_name_unnamed_fallback(self):
         """clean_name should fall back to doc name for unnamed placemarks."""
         result = update_forecasts.clean_name("Unnamed", "Chamera-I.kml")
-        assert result == "Chamera-I"
+        assert result == "Chamera-I HEP"
 
     def test_downsample_small_list(self):
         """Downsampling a small list should return it unchanged."""

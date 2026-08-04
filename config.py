@@ -17,11 +17,10 @@ setting environment variables overrides defaults.
 
 import os
 from functools import lru_cache
-from typing import Optional
 
 try:
     from pydantic_settings import BaseSettings
-    from pydantic import Field, field_validator
+    from pydantic import Field
 except ImportError:
     # Graceful fallback: if pydantic-settings is not installed,
     # provide a minimal dataclass-based config so existing code
@@ -41,11 +40,6 @@ except ImportError:
                 setattr(self, key, value)
 
     Field = lambda default=None, **kw: default  # type: ignore[assignment, misc]
-
-    def field_validator(*args, **kwargs):  # type: ignore[misc]
-        def _noop(func):
-            return func
-        return _noop
 
 
 # -----------------------------------------------------------------------
