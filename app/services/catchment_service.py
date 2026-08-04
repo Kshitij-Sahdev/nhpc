@@ -482,16 +482,16 @@ def get_all_catchments_status() -> Dict[str, Any]:
         is_spillway_open = "spillway" in dam_status.lower() or "gates opened" in dam_status.lower()
         high_inflow_alert = is_over_frl or is_near_danger or is_spillway_open
 
-        # Determine Catchment Overall Risk Level
+        # Determine Catchment Overall Risk Level (based on IMD Weather & NDMA Disaster Warnings)
         risk_level = "Normal" # Blue
         color_code = "#3b82f6"
 
-        if is_near_danger or imd_alert == "RED" or any(a["severity"].upper() in ["EXTREME", "SEVERE"] for a in cat_ndma_alerts):
+        if imd_alert == "RED" or any(a["severity"].upper() in ["EXTREME", "SEVERE"] for a in cat_ndma_alerts):
             risk_level = "Severe" # Red
             color_code = "#ef4444"
             severe_count += 1
             affected_projects_count += 1
-        elif high_inflow_alert or is_over_frl or imd_alert == "ORANGE" or cat_ndma_alerts or rain_24h >= 50.0:
+        elif imd_alert == "ORANGE" or cat_ndma_alerts or rain_24h >= 50.0:
             risk_level = "Warning" # Orange
             color_code = "#f97316"
             warning_count += 1

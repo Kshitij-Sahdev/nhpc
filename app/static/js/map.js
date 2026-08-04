@@ -293,7 +293,7 @@ function populateSidePanel(c) {
     const resLevelEl = document.getElementById('panel-res-level');
     resLevelEl.innerText = `${c.river_and_reservoir.reservoir_level_m} m (${c.river_and_reservoir.storage_capacity_percent}%)`;
     if (c.river_and_reservoir.over_frl || c.river_and_reservoir.high_inflow_alert) {
-        resLevelEl.style.color = '#ef4444';
+        resLevelEl.style.color = '#d97706';
         resLevelEl.style.fontWeight = 'bold';
     } else {
         resLevelEl.style.color = '';
@@ -307,7 +307,7 @@ function populateSidePanel(c) {
     const trendEl = document.getElementById('panel-river-trend');
     trendEl.innerText = c.river_and_reservoir.river_trend;
     if (c.river_and_reservoir.river_trend === 'Rising') {
-        trendEl.style.color = '#ef4444';
+        trendEl.style.color = '#d97706';
     } else {
         trendEl.style.color = '';
     }
@@ -327,14 +327,14 @@ function populateSidePanel(c) {
     if (c.river_and_reservoir.high_inflow_alert) {
         const opDiv = document.createElement('div');
         opDiv.className = 'alert-item telemetry-operational-alert';
-        opDiv.style.borderLeft = '4px solid #ef4444';
-        opDiv.style.background = '#fef2f2';
+        opDiv.style.borderLeft = '4px solid #f59e0b';
+        opDiv.style.background = '#fffbebe';
         opDiv.innerHTML = `
-            <div class="alert-icon" style="color: #ef4444;"><i data-lucide="alert-octagon"></i></div>
+            <div class="alert-icon" style="color: #d97706;"><i data-lucide="info"></i></div>
             <div class="alert-body">
-                <strong style="color: #dc2626;">[OPERATIONAL WARNING] SPILLWAY GATES OPENED / HIGH INFLOW ALERT</strong>
-                <p style="font-weight: 600; color: #991b1b;">Water Level: ${c.river_and_reservoir.reservoir_level_m} m (Full Reservoir Level: ${c.river_and_reservoir.frl_m} m) — 100%+ Capacity Exceeded</p>
-                <p style="font-size: 0.8rem; color: #7f1d1d;">Inflow (${c.river_and_reservoir.inflow_cumecs} m³/s) > Outflow (${c.river_and_reservoir.outflow_cumecs} m³/s) with Rising Trend. Controlled spillway release in progress.</p>
+                <strong style="color: #b45309;">[TELEMETRY FLAG] HIGH INFLOW / SPILLWAY STATUS</strong>
+                <p style="font-weight: 600; color: #78350f;">Water Level: ${c.river_and_reservoir.reservoir_level_m} m (FRL: ${c.river_and_reservoir.frl_m} m)</p>
+                <p style="font-size: 0.8rem; color: #92400e;">Inflow (${c.river_and_reservoir.inflow_cumecs} m³/s) > Outflow (${c.river_and_reservoir.outflow_cumecs} m³/s) with ${c.river_and_reservoir.river_trend} Trend. ${c.river_and_reservoir.dam_status}.</p>
             </div>
         `;
         alertsContainer.appendChild(opDiv);
