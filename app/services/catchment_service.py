@@ -513,12 +513,12 @@ def get_all_catchments_status() -> Dict[str, Any]:
             color_code = "#ef4444"
             severe_count += 1
             affected_projects_count += 1
-        elif imd_alert == "ORANGE" or cat_ndma_alerts or rain_24h >= 50.0:
+        elif imd_alert == "ORANGE" or cat_ndma_alerts or rain_24h >= 115.6:
             risk_level = "Warning" # Orange
             color_code = "#f97316"
             warning_count += 1
             affected_projects_count += 1
-        elif imd_alert == "YELLOW" or rain_24h >= 15.0 or max_3h_rain >= 8.0:
+        elif imd_alert == "YELLOW" or rain_24h >= 64.5 or max_3h_rain >= 15.0:
             risk_level = "Watch" # Yellow
             color_code = "#eab308"
             watch_count += 1
@@ -534,11 +534,21 @@ def get_all_catchments_status() -> Dict[str, Any]:
 
         # Build Structured IMD Alerts
         imd_alerts = []
-        if imd_alert in ["RED", "ORANGE", "YELLOW"] or rain_24h >= 15.0:
-            severity_label = "Extreme" if imd_alert == "RED" or rain_24h >= 100.0 else ("Severe" if imd_alert == "ORANGE" or rain_24h >= 50.0 else "Watch")
-            event_title = "IMD Heavy Rainfall & Flash Flood Warning" if rain_24h >= 50.0 else "IMD Rainfall & Weather Advisory"
+        if imd_alert in ["RED", "ORANGE", "YELLOW"] or rain_24h >= 64.5:
+            severity_label = "Extreme" if imd_alert == "RED" or rain_24h >= 204.5 else ("Very Severe" if imd_alert == "ORANGE" or rain_24h >= 115.6 else "Watch")
+            event_title = "IMD Extreme Rainfall & Flash Flood Warning" if rain_24h >= 204.5 else ("IMD Very Heavy Rainfall Warning" if rain_24h >= 115.6 else ("IMD Heavy Rainfall Alert" if rain_24h >= 64.5 else "IMD Rainfall & Weather Advisory"))
             headline = f"IMD Forecast: {rain_24h} mm/24h rain predicted over {name}"
-            desc = f"Heavy rainfall intensity detected. {', '.join(reasons) if reasons else 'High surface runoff and elevated river discharge expected.'}"
+            
+            if rain_24h >= 204.5:
+                intensity_text = "Extremely heavy rainfall intensity detected."
+            elif rain_24h >= 115.6:
+                intensity_text = "Very heavy rainfall intensity detected."
+            elif rain_24h >= 64.5:
+                intensity_text = "Heavy rainfall intensity detected."
+            else:
+                intensity_text = "Moderate rainfall intensity detected."
+                
+            desc = f"{intensity_text} {', '.join(reasons) if reasons else 'High surface runoff and elevated river discharge expected.'}"
             imd_alerts.append({
                 "alert_id": f"IMD-{name[:4].upper()}-01",
                 "event": event_title,
@@ -555,11 +565,13 @@ def get_all_catchments_status() -> Dict[str, Any]:
             combined_reasons.insert(0, f"HIGH INFLOW & SPILLWAY ALERT: Reservoir Level ({current_res_lvl}m) has exceeded FRL ({frl}m). Inflow ({inflow} m³/s) > Outflow ({outflow} m³/s) with {river_trend} trend. {dam_status}.")
 
         weather_condition = "Clear"
-        if rain_24h > 100.0:
-            weather_condition = "Torrential Downpour"
-        elif rain_24h > 50.0:
+        if rain_24h >= 204.5:
+            weather_condition = "Extremely Heavy Rainfall"
+        elif rain_24h >= 115.6:
+            weather_condition = "Very Heavy Rainfall"
+        elif rain_24h >= 64.5:
             weather_condition = "Heavy Rainfall"
-        elif rain_24h > 15.0:
+        elif rain_24h >= 15.6:
             weather_condition = "Moderate Rain Showers"
         elif max_wind > 35.0:
             weather_condition = "High Winds & Squalls"

@@ -382,23 +382,32 @@ def analyze_forecast(
     if max_3h_rain > settings.ALERT_RAIN_3H_RED:
         alert_level = "RED"
         reasons.append(f"Extreme peak rainfall of {max_3h_rain:.1f} mm in 3h expected at {max_3h_rain_time}")
-    elif max_3h_rain > settings.ALERT_RAIN_3H_YELLOW:
+    elif max_3h_rain > settings.ALERT_RAIN_3H_ORANGE and alert_level != "RED":
+        alert_level = "ORANGE"
+        reasons.append(f"Very heavy peak rainfall of {max_3h_rain:.1f} mm in 3h expected at {max_3h_rain_time}")
+    elif max_3h_rain > settings.ALERT_RAIN_3H_YELLOW and alert_level not in ["RED", "ORANGE"]:
         alert_level = "YELLOW"
         reasons.append(f"Heavy peak rainfall of {max_3h_rain:.1f} mm in 3h expected at {max_3h_rain_time}")
 
     if rain_24h > settings.ALERT_RAIN_24H_RED:
         alert_level = "RED"
-        reasons.append(f"Extreme 24-hour cumulative rainfall of {rain_24h:.1f} mm expected")
-    elif rain_24h > settings.ALERT_RAIN_24H_YELLOW and alert_level != "RED":
+        reasons.append(f"Extremely heavy 24-hour cumulative rainfall of {rain_24h:.1f} mm expected")
+    elif rain_24h > settings.ALERT_RAIN_24H_ORANGE and alert_level != "RED":
+        alert_level = "ORANGE"
+        reasons.append(f"Very heavy 24-hour cumulative rainfall of {rain_24h:.1f} mm expected")
+    elif rain_24h > settings.ALERT_RAIN_24H_YELLOW and alert_level not in ["RED", "ORANGE"]:
         alert_level = "YELLOW"
         reasons.append(f"Heavy 24-hour cumulative rainfall of {rain_24h:.1f} mm expected")
 
     if max_gust > settings.ALERT_GUST_RED:
         alert_level = "RED"
         reasons.append(f"Extreme wind gust of {max_gust:.1f} m/s expected")
-    elif max_gust > settings.ALERT_GUST_YELLOW and alert_level != "RED":
+    elif max_gust > settings.ALERT_GUST_ORANGE and alert_level != "RED":
+        alert_level = "ORANGE"
+        reasons.append(f"Very strong wind gust of {max_gust:.1f} m/s expected")
+    elif max_gust > settings.ALERT_GUST_YELLOW and alert_level not in ["RED", "ORANGE"]:
         alert_level = "YELLOW"
-        reasons.append(f"High wind gust of {max_gust:.1f} m/s expected")
+        reasons.append(f"Strong wind gust of {max_gust:.1f} m/s expected")
 
     cleaned_forecast = {
         "times": times_ist,

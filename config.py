@@ -117,11 +117,14 @@ class Settings(BaseSettings):
     NAME_MAX_LENGTH: int = Field(default=200, description="Maximum length for user-provided names")
 
     # --- Alert Thresholds ---
-    ALERT_RAIN_3H_RED: float = Field(default=30.0, description="3-hour rainfall RED threshold (mm)")
+    ALERT_RAIN_3H_RED: float = Field(default=50.0, description="3-hour rainfall RED threshold (mm)")
+    ALERT_RAIN_3H_ORANGE: float = Field(default=30.0, description="3-hour rainfall ORANGE threshold (mm)")
     ALERT_RAIN_3H_YELLOW: float = Field(default=15.0, description="3-hour rainfall YELLOW threshold (mm)")
-    ALERT_RAIN_24H_RED: float = Field(default=100.0, description="24-hour rainfall RED threshold (mm)")
-    ALERT_RAIN_24H_YELLOW: float = Field(default=50.0, description="24-hour rainfall YELLOW threshold (mm)")
+    ALERT_RAIN_24H_RED: float = Field(default=204.5, description="24-hour rainfall RED threshold (mm)")
+    ALERT_RAIN_24H_ORANGE: float = Field(default=115.6, description="24-hour rainfall ORANGE threshold (mm)")
+    ALERT_RAIN_24H_YELLOW: float = Field(default=64.5, description="24-hour rainfall YELLOW threshold (mm)")
     ALERT_GUST_RED: float = Field(default=25.0, description="Wind gust RED threshold (m/s)")
+    ALERT_GUST_ORANGE: float = Field(default=20.0, description="Wind gust ORANGE threshold (m/s)")
     ALERT_GUST_YELLOW: float = Field(default=15.0, description="Wind gust YELLOW threshold (m/s)")
 
     # --- Rate Limiting ---

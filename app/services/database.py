@@ -88,7 +88,7 @@ def init_db(db_file: Optional[str] = None) -> None:
         plant_name TEXT NOT NULL,
         lat REAL NOT NULL,
         lon REAL NOT NULL,
-        alert_level TEXT NOT NULL CHECK(alert_level IN ('GREEN','YELLOW','RED','UNKNOWN')),
+        alert_level TEXT NOT NULL CHECK(alert_level IN ('GREEN','YELLOW','ORANGE','RED','UNKNOWN')),
         rain_24h REAL DEFAULT 0.0,
         rain_48h REAL DEFAULT 0.0,
         rain_72h REAL DEFAULT 0.0,
