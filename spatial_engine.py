@@ -41,6 +41,39 @@ def parse_kml_coordinates(coords_str: str) -> List[Tuple[float, float]]:
     return points
 
 
+def clean_project_name(raw_name: str) -> str:
+    """Normalizes raw KML/GeoJSON placemark names to official NHPC project names."""
+    name = raw_name.replace(" (Project)", "").replace(" (Catchment)", "").replace(" Catchment area", "").replace("Corrected", "").strip()
+    mapping = {
+        "Dibang": "Dibang Multipurpose Project",
+        "Dibang Multipurpose Project": "Dibang Multipurpose Project",
+        "Kishanganga": "Kishanganga HEP",
+        "Kishanganga HEP": "Kishanganga HEP",
+        "Tanakpur": "Tanakpur HEP",
+        "SubLowdam": "Subansiri Lower HEP",
+        "Subansiri Lower": "Subansiri Lower HEP",
+        "tld4": "Teesta Low Dam IV HEP",
+        "Teesta Low Dam IV": "Teesta Low Dam IV HEP",
+        "nbpdam": "Nimoo Bazgo HEP",
+        "Nimoo Bazgo": "Nimoo Bazgo HEP",
+        "ChutakPS": "Chutak Power Station",
+        "Chutak": "Chutak Power Station",
+        "Uri_I": "Uri-I Power Station",
+        "Uri I": "Uri-I Power Station",
+        "Uri_II": "Uri-II Power Station",
+        "Uri II": "Uri-II Power Station",
+        "Baira": "Baira Siul Power Station",
+        "Salal": "Salal Power Station",
+        "Chamera-I": "Chamera-I HEP",
+        "Chamera-II": "Chamera-II HEP",
+        "Chamera-III": "Chamera-III HEP",
+        "Parbati-II": "Parbati-II HEP",
+        "Parbati-III": "Parbati-III HEP",
+        "Ranjit Sagar": "Ranjit Sagar Hydro Project"
+    }
+    return mapping.get(name, name)
+
+
 class SpatialCatchmentEngine:
     def __init__(self, kml_path: Optional[str] = None):
         self.kml_path = kml_path or "Catchment_NHPC.KML"
@@ -70,7 +103,11 @@ class SpatialCatchmentEngine:
                 name_elem = pm.find('kml:name', ns)
                 if name_elem is None:
                     name_elem = pm.find('name')
-                name = name_elem.text.strip() if name_elem is not None and name_elem.text else "Unnamed Catchment"
+                raw_name = name_elem.text.strip() if name_elem is not None and name_elem.text else "Unnamed Catchment"
+                name = clean_project_name(raw_name)
+
+                if name in self.catchments:
+                    continue
 
                 # Find coordinates
                 coords_elem = pm.find('.//kml:coordinates', ns)

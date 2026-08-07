@@ -1,13 +1,12 @@
-// NHPC Catchment Emergency Warning Terminal — Professional GIS & Merged Sidebar Controller
+// NHPC Catchment Emergency Warning Terminal — ONLY INDIA Vector GIS Canvas & Location Controller
 
 let map = null;
 let catchmentPolygons = {};
+let gridLayerGroup = null;
 let projectMarkers = {};
-let ndmaLayerGroup = null;
-let riverLayerGroup = null;
 let activeRiskFilter = 'ALL';
 let currentSelectedCatchment = null;
-let catchmentChart = null;
+let modalChart = null;
 
 let allCatchmentData = window.INITIAL_CATCHMENTS || [];
 let catchmentSummary = window.INITIAL_SUMMARY || {};
@@ -18,85 +17,112 @@ document.addEventListener('DOMContentLoaded', () => {
         lucide.createIcons();
     }
 
-    // Keyboard navigation: Escape key closes catchment detail inspector panel
+    // Escape key closes open modal dialog popup
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' || e.key === 'Esc') {
-            const detailView = document.getElementById('sidebar-view-detail');
-            if (detailView && !detailView.classList.contains('hidden')) {
-                closeSidePanel();
-            }
+            closeProjectModalForce();
         }
     });
 });
 
 function initMap() {
+    // Lock map bounds strictly to India
+    const southWest = L.latLng(6.0, 68.0);
+    const northEast = L.latLng(37.5, 97.5);
+    const indiaBounds = L.latLngBounds(southWest, northEast);
+
     map = L.map('map', {
         zoomControl: false,
-        preferCanvas: true
-    }).setView([28.5, 83.5], 5);
+        preferCanvas: true,
+        maxBounds: indiaBounds,
+        maxBoundsViscosity: 1.0,
+        minZoom: 4.5,
+        maxZoom: 13
+    }).setView([22.9734, 78.6569], 5);
 
     L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
-    // Flat Light Monochrome Base Map Tiles
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        subdomains: 'abcd',
-        maxZoom: 19
-    }).addTo(map);
+    // Dedicated Panes for Crisp Rendering Hierarchy
+    map.createPane('indiaLandPane');
+    map.getPane('indiaLandPane').style.zIndex = 400;
 
-
-    // Layer Panes for Hierarchy
     map.createPane('riversPane');
     map.getPane('riversPane').style.zIndex = 410;
+
+    map.createPane('gridsPane');
+    map.getPane('gridsPane').style.zIndex = 420;
 
     map.createPane('catchmentsPane');
     map.getPane('catchmentsPane').style.zIndex = 430;
 
-    map.createPane('warningsPane');
-    map.getPane('warningsPane').style.zIndex = 440;
-
     map.createPane('projectsPane');
     map.getPane('projectsPane').style.zIndex = 450;
 
-    // Load & Render Clean Solid Blue River Channel Vectors (Pane 410)
-    fetch('/api/v1/rivers')
-        .then(r => r.json())
+    // RENDER ONLY INDIA LANDMASS POLYGON (No World Map Tiles / No Foreign Countries!)
+    fetch('/static/geojson/india-composite.geojson')
+        .then(res => res.json())
         .then(data => {
-            if (data && data.features) {
-                riverLayerGroup = L.geoJSON(data, {
-                    pane: 'riversPane',
-                    style: {
-                        color: '#38bdf8', // Clean Solid Blue
-                        weight: 2.5,
-                        opacity: 0.85,
-                        lineJoin: 'round',
-                        lineCap: 'round'
-                    },
-                    onEachFeature: (feature, layer) => {
-                        if (feature.properties && feature.properties.name) {
-                            layer.bindTooltip(
-                                `<div style="font-family: Inter, sans-serif; font-size: 0.8rem; padding: 2px;">
-                                    <strong style="color: #38bdf8;">${feature.properties.name}</strong><br>
-                                    <span style="font-size: 0.7rem; color: #8b949e;">${feature.properties.type || 'River Channel'}</span>
-                                 </div>`, 
-                                { permanent: false, direction: 'top', sticky: true }
-                            );
-                        }
-                    }
-                }).addTo(map);
-            }
-        })
-        .catch(e => console.warn('River vector load error:', e));
+            const indiaLayer = L.geoJSON(data, {
+                pane: 'indiaLandPane',
+                interactive: false,
+                style: {
+                    color: '#ff9933',      // Official Saffron/Orange Boundary Line of India
+                    weight: 2.5,
+                    opacity: 1,
+                    fillColor: '#ffffff',  // Clean White Fill for ONLY India Landmass
+                    fillOpacity: 1.0
+                }
+            }).addTo(map);
 
-    // Load Catchments & Dam Sites
+            map.fitBounds(indiaLayer.getBounds(), { padding: [10, 10] });
+        })
+        .catch(err => console.error('Failed to load India landmass:', err));
+
+    // RENDER OFFICIAL RIVERS OF INDIA OVER INDIA
+    fetch('/static/geojson/india-rivers-simple.geojson')
+        .then(res => res.json())
+        .then(data => {
+            L.geoJSON(data, {
+                pane: 'riversPane',
+                interactive: false,
+                style: {
+                    color: '#2563eb',
+                    weight: 1.5,
+                    opacity: 0.85
+                }
+            }).addTo(map);
+        })
+        .catch(err => console.error('Failed to load rivers overlay:', err));
+
+    // Render Projects, Catchments & 12km Grid Squares inside India
     if (allCatchmentData && allCatchmentData.length > 0) {
         renderCatchmentsOnMap();
     } else {
         fetchCatchmentData();
     }
 
-    // Live Telemetry Polling (every 30 seconds)
+    // Periodic Refresh (every 30 seconds)
     setInterval(fetchCatchmentData, 30000);
+}
+
+function toggleSidebarCollapse() {
+    const sidebar = document.getElementById('catchment-nav-sidebar');
+    const icon = document.getElementById('sidebar-toggle-icon');
+    if (!sidebar) return;
+
+    sidebar.classList.toggle('collapsed');
+    const isCollapsed = sidebar.classList.contains('collapsed');
+
+    if (icon) {
+        icon.setAttribute('data-lucide', isCollapsed ? 'chevron-right' : 'chevron-left');
+    }
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+
+    setTimeout(() => {
+        if (map) map.invalidateSize();
+    }, 280);
 }
 
 function fetchCatchmentData() {
@@ -115,7 +141,7 @@ function fetchCatchmentData() {
 
 function updateSummaryTopBar() {
     if (!catchmentSummary) return;
-    document.getElementById('stat-total-catchments').innerText = catchmentSummary.total_catchments || 27;
+    document.getElementById('stat-total-catchments').innerText = catchmentSummary.total_catchments || 25;
     document.getElementById('stat-normal-count').innerText = catchmentSummary.normal || 0;
     document.getElementById('stat-watch-count').innerText = catchmentSummary.watch || 0;
     document.getElementById('stat-warning-count').innerText = catchmentSummary.warning || 0;
@@ -125,97 +151,127 @@ function updateSummaryTopBar() {
 }
 
 function renderCatchmentsOnMap() {
-    // Clear existing polygon layers & dam markers
+    // Clear existing layers
     Object.keys(catchmentPolygons).forEach(k => map.removeLayer(catchmentPolygons[k]));
     catchmentPolygons = {};
 
     Object.keys(projectMarkers).forEach(k => map.removeLayer(projectMarkers[k]));
     projectMarkers = {};
 
+    if (gridLayerGroup) {
+        map.removeLayer(gridLayerGroup);
+    }
+    gridLayerGroup = L.layerGroup([], { pane: 'gridsPane' }).addTo(map);
+
     allCatchmentData.forEach(c => {
         if (!c.coordinates || c.coordinates.length < 3) return;
 
         const risk = c.risk_level;
         let color = '#3b82f6'; // Normal (Blue)
-        let fillOpacity = 0.22;
-        let weight = 1.8;
+        let fillOpacity = 0.18;
+        let weight = 2.2;
 
         if (risk === 'Severe') {
             color = '#ef4444'; // Red
-            fillOpacity = 0.40;
-            weight = 2.5;
+            fillOpacity = 0.32;
+            weight = 2.8;
         } else if (risk === 'Warning') {
             color = '#f97316'; // Orange
-            fillOpacity = 0.35;
-            weight = 2.2;
+            fillOpacity = 0.28;
+            weight = 2.5;
         } else if (risk === 'Watch') {
             color = '#eab308'; // Yellow
-            fillOpacity = 0.28;
-            weight = 2.0;
+            fillOpacity = 0.24;
+            weight = 2.3;
         }
 
-        // Polygon Layer
+        // Render 12km x 12km Grid Squares inside Catchment
+        if (c.grid_cells && c.grid_cells.length > 0) {
+            c.grid_cells.forEach(g => {
+                let gColor = '#3b82f6';
+                let gOpacity = 0.18;
+                if (g.alert_level === 'RED') {
+                    gColor = '#ef4444';
+                    gOpacity = 0.48;
+                } else if (g.alert_level === 'ORANGE') {
+                    gColor = '#f97316';
+                    gOpacity = 0.40;
+                } else if (g.alert_level === 'YELLOW') {
+                    gColor = '#eab308';
+                    gOpacity = 0.32;
+                }
+
+                const gridPoly = L.polygon(g.coordinates, {
+                    pane: 'gridsPane',
+                    color: gColor,
+                    weight: 1.0,
+                    opacity: 0.55,
+                    fillColor: gColor,
+                    fillOpacity: gOpacity,
+                    dashArray: '2, 3'
+                });
+
+                gridPoly.bindTooltip(`
+                    <div class="catchment-leaflet-tooltip">
+                        <span class="tooltip-title" style="color: ${gColor};">[GRID ${g.alert_level}] ${g.grid_id}</span>
+                        <span class="tooltip-sub">Project: <strong>${c.catchment_name}</strong></span><br>
+                        <span class="tooltip-sub">24h Rain: <strong>${g.weather.rain_24h_mm} mm</strong></span><br>
+                        <span class="tooltip-sub">Temp: <strong>${g.weather.temperature_c} °C</strong> | Wind: <strong>${g.weather.wind_speed_kmh} km/h ${g.weather.wind_direction}</strong></span>
+                    </div>
+                `, { permanent: false, direction: 'top', sticky: true });
+
+                gridPoly.on('click', () => openProjectModal(c.catchment_name));
+                gridLayerGroup.addLayer(gridPoly);
+            });
+        }
+
+        // Catchment Boundary Polygon
         const polygon = L.polygon(c.coordinates, {
             pane: 'catchmentsPane',
             color: color,
             weight: weight,
-            opacity: 0.85,
+            opacity: 0.90,
             fillColor: color,
             fillOpacity: fillOpacity,
             lineJoin: 'round',
             lineCap: 'round'
         }).addTo(map);
 
-        // Polygon Tooltip
         polygon.bindTooltip(`
             <div class="catchment-leaflet-tooltip">
                 <span class="tooltip-title" style="color: ${color};">[${risk.toUpperCase()}] ${c.catchment_name}</span>
-                <span class="tooltip-sub">River: ${c.river}</span><br>
-                <span class="tooltip-sub">24h Rain: ${c.rainfall_forecast.rain_24h_mm} mm</span><br>
-                <span class="tooltip-sub">Reservoir Level: ${c.river_and_reservoir.reservoir_level_m} m (${c.river_and_reservoir.storage_capacity_percent}%)</span>
+                <span class="tooltip-sub">River System: <strong>${c.river}</strong></span><br>
+                <span class="tooltip-sub">12km Grid Count: <strong>${c.grid_summary ? c.grid_summary.total_grids : 0} Grids</strong></span><br>
+                <span class="tooltip-sub">Peak 24h Rain: <strong>${c.rainfall_forecast.rain_24h_mm} mm</strong></span>
             </div>
         `, { permanent: false, direction: 'top', sticky: true });
 
-        // Hover effect
-        polygon.on('mouseover', function() {
-            this.setStyle({ weight: weight + 1.2, fillOpacity: fillOpacity + 0.12 });
-        });
-
-        polygon.on('mouseout', function() {
-            if (currentSelectedCatchment !== c.catchment_name) {
-                this.setStyle({ weight: weight, fillOpacity: fillOpacity });
-            }
-        });
-
-        polygon.on('click', () => {
-            selectCatchment(c.catchment_name, true);
-        });
-
+        polygon.on('click', () => openProjectModal(c.catchment_name));
         catchmentPolygons[c.catchment_name] = polygon;
 
-        // Render Dam & Hydro Power Station Marker at exact site coordinates
+        // Project Location Marker (Teardrop Marker)
         if (c.centroid && c.centroid.lat && c.centroid.lon) {
-            const project = c.projects_inside && c.projects_inside.length > 0 ? c.projects_inside[0] : { capacity_mw: 0 };
-            const capacityMW = project.capacity_mw || 0;
-            const isDam = capacityMW > 0;
-            const riskClass = risk.toLowerCase();
-
-            const pinHtml = `
-                <div class="dam-marker-pin ${riskClass}">
-                    <span class="dam-title-text">${c.catchment_name.replace(' HEP', '').replace(' Power Station', '')}</span>
-                    ${isDam ? `<span class="dam-mw-badge">${capacityMW} MW</span>` : ''}
-                </div>
+            const markerColor = color;
+            const markerStyle = `
+                background-color: ${markerColor};
+                width: 1.25rem;
+                height: 1.25rem;
+                border-radius: 2rem 2rem 0;
+                transform: rotate(45deg);
+                border: 2px solid #FFFFFF;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.35);
             `;
 
-            const damIcon = L.divIcon({
-                html: pinHtml,
-                className: 'custom-dam-marker-icon',
-                iconSize: [110, 22],
-                iconAnchor: [55, 11]
+            const projectIcon = L.divIcon({
+                className: "project-icon-marker",
+                iconSize: [20, 20],
+                iconAnchor: [10, 20],
+                popupAnchor: [0, -20],
+                html: `<div style="${markerStyle}"></div>`
             });
 
             const marker = L.marker([c.centroid.lat, c.centroid.lon], {
-                icon: damIcon,
+                icon: projectIcon,
                 pane: 'projectsPane'
             }).addTo(map);
 
@@ -223,110 +279,66 @@ function renderCatchmentsOnMap() {
                 <div class="catchment-leaflet-tooltip">
                     <span class="tooltip-title" style="color: ${color};">${c.catchment_name}</span>
                     <span class="tooltip-sub">River: <strong>${c.river}</strong></span><br>
-                    ${isDam ? `<span class="tooltip-sub">Capacity: <strong>${capacityMW} MW</strong></span><br>` : ''}
-                    <span class="tooltip-sub">FRL: <strong>${c.river_and_reservoir.frl_m} m</strong> | Reservoir: <strong>${c.river_and_reservoir.reservoir_level_m} m</strong></span><br>
-                    <span class="tooltip-sub">Inflow: <strong>${c.river_and_reservoir.inflow_cumecs} m³/s</strong> | Status: <strong>${c.river_and_reservoir.dam_status}</strong></span>
+                    <span class="tooltip-sub">Location: <strong>${c.district}, ${c.state}</strong></span><br>
+                    <span class="tooltip-sub">Peak 24h Rain: <strong>${c.rainfall_forecast.rain_24h_mm} mm</strong></span>
                 </div>
             `, { permanent: false, direction: 'top' });
 
-            marker.on('click', () => selectCatchment(c.catchment_name, true));
+            marker.on('click', () => openProjectModal(c.catchment_name));
             projectMarkers[c.catchment_name] = marker;
         }
     });
 }
 
-function selectCatchment(catchmentName, panTo = true) {
+function zoomToProjectOnMap(catchmentName) {
+    const poly = catchmentPolygons[catchmentName];
+    if (poly) {
+        map.fitBounds(poly.getBounds(), { padding: [50, 50], maxZoom: 11, animate: true });
+        currentSelectedCatchment = catchmentName;
+    }
+}
+
+function openProjectModal(catchmentName) {
     const c = allCatchmentData.find(x => x.catchment_name === catchmentName);
     if (!c) return;
 
     currentSelectedCatchment = catchmentName;
+    zoomToProjectOnMap(catchmentName);
 
-    // Highlight selected polygon
-    Object.keys(catchmentPolygons).forEach(name => {
-        const poly = catchmentPolygons[name];
-        const isTarget = (name === catchmentName);
-        if (isTarget) {
-            poly.setStyle({ weight: 3.5, opacity: 1.0, fillOpacity: 0.5 });
-            poly.bringToFront();
-        } else {
-            const risk = (allCatchmentData.find(x => x.catchment_name === name) || {}).risk_level || 'Normal';
-            const defaultColor = risk === 'Severe' ? '#ef4444' : (risk === 'Warning' ? '#f97316' : (risk === 'Watch' ? '#eab308' : '#3b82f6'));
-            poly.setStyle({ color: defaultColor, weight: 1.8, opacity: 0.85, fillOpacity: 0.22 });
-        }
-    });
+    document.getElementById('modal-project-name').innerText = c.catchment_name;
+    document.getElementById('modal-catchment-id').innerText = c.catchment_id;
+    document.getElementById('modal-river-state').innerText = `${c.river} • ${c.district}, ${c.state}`;
 
-    // Zoom map to bounds
-    if (panTo && catchmentPolygons[catchmentName]) {
-        map.fitBounds(catchmentPolygons[catchmentName].getBounds(), { padding: [40, 40], maxZoom: 11, animate: true });
-    }
-
-    // Populate & Open Merged Catchment Detail View inside Left Sidebar
-    populateSidePanel(c);
-}
-
-function populateSidePanel(c) {
-    // Switch Left Sidebar from List View to Detail View
-    document.getElementById('sidebar-view-list').classList.add('hidden');
-    document.getElementById('sidebar-view-detail').classList.remove('hidden');
-
-    document.getElementById('panel-catchment-name').innerText = c.catchment_name;
-    document.getElementById('panel-catchment-id').innerText = c.catchment_id;
-    document.getElementById('panel-river-state').innerText = `${c.river} • ${c.district}, ${c.state}`;
-
-    const badge = document.getElementById('panel-risk-badge');
+    const badge = document.getElementById('modal-risk-badge');
     badge.innerText = c.risk_level.toUpperCase();
     badge.className = `risk-badge badge-${c.risk_level.toLowerCase()}`;
 
-    // Weather Telemetry
-    document.getElementById('panel-weather-condition').innerText = c.weather.condition;
-    document.getElementById('panel-rain-24h').innerText = `${c.rainfall_forecast.rain_24h_mm} mm`;
-    document.getElementById('panel-wind-speed').innerText = `${c.weather.wind_speed_kmh} km/h`;
-    document.getElementById('panel-temp-humidity').innerText = `${c.weather.temperature_c}°C / ${c.weather.humidity_percent}%`;
+    // Detailed Weather Parameters with Explicit Units
+    document.getElementById('modal-weather-condition').innerText = c.weather.condition;
+    document.getElementById('modal-rain-24h').innerText = `${c.rainfall_forecast.rain_24h_mm} mm`;
+    document.getElementById('modal-wind-speed').innerText = `${c.weather.wind_speed_kmh} km/h ${c.weather.wind_direction || ''}`;
+    document.getElementById('modal-temp-humidity').innerText = `${c.weather.temperature_c} °C / ${c.weather.humidity_percent}%`;
+    document.getElementById('modal-pressure').innerText = `${c.weather.pressure_hpa} hPa`;
+    document.getElementById('modal-cloud-cover').innerText = `${c.weather.cloud_cover_percent}%`;
 
-    // Rain summary
-    document.getElementById('panel-max-3h').innerText = `${c.rainfall_forecast.max_3h_rain_mm} mm`;
-    document.getElementById('panel-rain-72h').innerText = `${c.rainfall_forecast.rain_72h_mm} mm`;
-
-    // River & Reservoir
-    document.getElementById('panel-frl').innerText = `${c.river_and_reservoir.frl_m} m`;
-    
-    const resLevelEl = document.getElementById('panel-res-level');
-    resLevelEl.innerText = `${c.river_and_reservoir.reservoir_level_m} m (${c.river_and_reservoir.storage_capacity_percent}%)`;
-    if (c.river_and_reservoir.over_frl || c.river_and_reservoir.high_inflow_alert) {
-        resLevelEl.style.color = '#d97706';
-        resLevelEl.style.fontWeight = 'bold';
-    } else {
-        resLevelEl.style.color = '';
-        resLevelEl.style.fontWeight = '';
+    // 12km Grid Breakdown Stats
+    if (c.grid_summary) {
+        document.getElementById('modal-grid-total').innerText = `${c.grid_summary.total_grids} Grids`;
+        document.getElementById('modal-grid-alert-count').innerText = `${c.grid_summary.alert_grids} Grids`;
+        const hEl = document.getElementById('modal-highest-grid-alert');
+        hEl.innerText = c.grid_summary.highest_grid_alert;
+        hEl.style.color = c.grid_summary.highest_grid_alert === 'RED' ? '#ef4444' : (c.grid_summary.highest_grid_alert === 'ORANGE' ? '#f97316' : (c.grid_summary.highest_grid_alert === 'YELLOW' ? '#eab308' : '#3b82f6'));
     }
 
-    document.getElementById('panel-danger-mark').innerText = `${c.river_and_reservoir.danger_mark_m} m`;
-    document.getElementById('panel-inflow').innerText = `${c.river_and_reservoir.inflow_cumecs} m³/s`;
-    document.getElementById('panel-outflow').innerText = `${c.river_and_reservoir.outflow_cumecs} m³/s`;
-    
-    const trendEl = document.getElementById('panel-river-trend');
-    trendEl.innerText = c.river_and_reservoir.river_trend;
-    if (c.river_and_reservoir.river_trend === 'Rising') {
-        trendEl.style.color = '#d97706';
-    } else {
-        trendEl.style.color = '';
-    }
-    
-    const damStatusEl = document.getElementById('panel-dam-status');
-    damStatusEl.querySelector('span').innerText = c.river_and_reservoir.dam_status;
-    if (c.river_and_reservoir.high_inflow_alert) {
-        damStatusEl.className = 'dam-status-callout high-inflow-alert-active';
-    } else {
-        damStatusEl.className = 'dam-status-callout';
-    }
+    // Rain summary intensity
+    document.getElementById('modal-max-3h').innerText = `${c.rainfall_forecast.max_3h_rain_mm} mm`;
+    document.getElementById('modal-rain-72h').innerText = `${c.rainfall_forecast.rain_72h_mm} mm`;
 
-    // Render IMD Weather, NDMA Disaster & Telemetry Operational Alerts
-    const alertsContainer = document.getElementById('panel-ndma-alerts-list');
+    // Render IMD Weather & NDMA Sachet Alerts
+    const alertsContainer = document.getElementById('modal-alerts-list');
     alertsContainer.innerHTML = '';
-
     let alertCount = 0;
 
-    // 1. IMD Heavy Rainfall & Flash Flood Alerts
     if (c.imd_alerts && c.imd_alerts.length > 0) {
         c.imd_alerts.forEach(a => {
             alertCount++;
@@ -341,14 +353,13 @@ function populateSidePanel(c) {
                     <strong style="color: ${imdColor};">[IMD ${a.alert_level || 'WARNING'}] ${a.event}</strong>
                     <p style="font-weight: 700; color: #111827; margin: 2px 0;">${a.headline}</p>
                     <p style="font-size: 0.78rem; color: #374151; margin-bottom: 3px;">${a.description}</p>
-                    <span class="alert-meta" style="color: #6b7280;">IMD NWP Forecast | 24h Rain: <strong>${a.rain_24h_mm} mm</strong></span>
+                    <span class="alert-meta" style="color: #6b7280;">12km Grid NWP Forecast | Peak Rain: <strong>${a.rain_24h_mm} mm</strong></span>
                 </div>
             `;
             alertsContainer.appendChild(div);
         });
     }
 
-    // 2. NDMA Sachet Emergency Disaster Alerts
     if (c.ndma_alerts && c.ndma_alerts.length > 0) {
         c.ndma_alerts.forEach(a => {
             alertCount++;
@@ -368,91 +379,48 @@ function populateSidePanel(c) {
         });
     }
 
-    // 3. Telemetry Reservoir Operational Flag
-    if (c.river_and_reservoir.high_inflow_alert) {
-        alertCount++;
-        const opDiv = document.createElement('div');
-        opDiv.className = 'alert-item telemetry-operational-alert';
-        opDiv.style.borderLeft = '4px solid #f59e0b';
-        opDiv.style.background = '#fffbe6';
-        opDiv.innerHTML = `
-            <div class="alert-icon" style="color: #d97706;"><i data-lucide="info"></i></div>
-            <div class="alert-body">
-                <strong style="color: #b45309;">[TELEMETRY FLAG] HIGH INFLOW / SPILLWAY STATUS</strong>
-                <p style="font-weight: 600; color: #78350f;">Water Level: ${c.river_and_reservoir.reservoir_level_m} m (FRL: ${c.river_and_reservoir.frl_m} m)</p>
-                <p style="font-size: 0.8rem; color: #92400e;">Inflow (${c.river_and_reservoir.inflow_cumecs} m³/s) > Outflow (${c.river_and_reservoir.outflow_cumecs} m³/s) with ${c.river_and_reservoir.river_trend} Trend. ${c.river_and_reservoir.dam_status}.</p>
-            </div>
-        `;
-        alertsContainer.appendChild(opDiv);
-    }
-
     if (alertCount === 0) {
         alertsContainer.innerHTML = `<div class="empty-alerts" style="font-size: 0.78rem; color: #6b7280;">No active IMD weather warnings or emergency disaster alerts for this catchment.</div>`;
     }
 
-    // Projects Inside
-    const projectsList = document.getElementById('panel-projects-list');
-    projectsList.innerHTML = '';
-    c.projects_inside.forEach(p => {
-        const li = document.createElement('li');
-        li.className = 'project-item';
-        li.innerHTML = `
-            <strong>${p.name}</strong>
-            <span>Type: ${p.type} | Installed Capacity: ${p.capacity_mw} MW</span><br>
-            <span style="color: #6b7280;">Status: ${p.status}</span>
-        `;
-        projectsList.appendChild(li);
-    });
+    // Render 5-Day Rainfall Forecast Chart (Calendar Dates)
+    renderModalChart(c.rainfall_forecast.timeline);
 
-
-    // Districts
-    const districtsContainer = document.getElementById('panel-districts-tags');
-    districtsContainer.innerHTML = '';
-    (c.affected_districts || []).forEach(d => {
-        const span = document.createElement('span');
-        span.className = 'district-tag';
-        span.innerText = d;
-        districtsContainer.appendChild(span);
-    });
-
-    document.getElementById('panel-last-updated').innerText = c.last_updated;
-
-    // Render 5-Day Rainfall Timeline Chart
-    renderCatchmentChart(c.rainfall_forecast.timeline);
+    // Show Modal Dialog Backdrop
+    const backdrop = document.getElementById('project-modal-backdrop');
+    if (backdrop) backdrop.classList.remove('hidden');
 
     if (window.lucide) {
         lucide.createIcons();
     }
 }
 
-function closeSidePanel() {
-    // Switch Left Sidebar from Detail View back to List View
-    document.getElementById('sidebar-view-detail').classList.add('hidden');
-    document.getElementById('sidebar-view-list').classList.remove('hidden');
-
-    if (currentSelectedCatchment && catchmentPolygons[currentSelectedCatchment]) {
-        const risk = (allCatchmentData.find(x => x.catchment_name === currentSelectedCatchment) || {}).risk_level || 'Normal';
-        const defaultColor = risk === 'Severe' ? '#ef4444' : (risk === 'Warning' ? '#f97316' : (risk === 'Watch' ? '#eab308' : '#3b82f6'));
-        catchmentPolygons[currentSelectedCatchment].setStyle({ color: defaultColor, weight: 1.8, fillOpacity: 0.22 });
+function closeProjectModal(event) {
+    if (event.target.id === 'project-modal-backdrop') {
+        closeProjectModalForce();
     }
-    currentSelectedCatchment = null;
 }
 
-function renderCatchmentChart(timeline) {
-    const ctx = document.getElementById('catchmentRainChart').getContext('2d');
-    if (catchmentChart) catchmentChart.destroy();
+function closeProjectModalForce() {
+    const backdrop = document.getElementById('project-modal-backdrop');
+    if (backdrop) backdrop.classList.add('hidden');
+}
 
-    const labels = timeline.map(t => t.day);
+function renderModalChart(timeline) {
+    const ctx = document.getElementById('modalRainChart').getContext('2d');
+    if (modalChart) modalChart.destroy();
+
+    const labels = timeline.map(t => t.date || t.day);
     const rainData = timeline.map(t => t.rain_mm);
 
-    catchmentChart = new Chart(ctx, {
+    modalChart = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: labels,
             datasets: [{
                 label: 'Predicted Rain (mm)',
                 data: rainData,
-                backgroundColor: 'rgba(31, 41, 55, 0.75)',
+                backgroundColor: 'rgba(31, 41, 55, 0.80)',
                 borderColor: '#111827',
                 borderWidth: 1,
                 borderRadius: 4
@@ -472,11 +440,9 @@ function renderCatchmentChart(timeline) {
     });
 }
 
-
 function filterCatchmentList() {
     const query = (document.getElementById('catchment-search-input').value || '').toLowerCase();
     
-    // Filter list
     document.querySelectorAll('.catchment-card').forEach(card => {
         const text = card.innerText.toLowerCase();
         const matchesQuery = text.includes(query);
@@ -493,7 +459,6 @@ function filterCatchmentList() {
         card.style.display = (matchesQuery && matchesRisk) ? 'block' : 'none';
     });
 
-    // Filter map polygons & markers
     allCatchmentData.forEach(c => {
         const poly = catchmentPolygons[c.catchment_name];
         if (!poly) return;
@@ -519,7 +484,6 @@ function filterCatchmentList() {
 function setRiskFilter(riskLevel) {
     activeRiskFilter = riskLevel;
 
-    // Update risk filter pills state
     document.querySelectorAll('.risk-filter-pills .pill-btn').forEach(btn => {
         if (btn.getAttribute('data-risk') === riskLevel) {
             btn.classList.add('active');
@@ -528,7 +492,6 @@ function setRiskFilter(riskLevel) {
         }
     });
 
-    // Update top stat cards state
     document.querySelectorAll('.catchment-top-bar .catchment-stat-card').forEach(card => {
         card.classList.remove('active');
     });
@@ -547,9 +510,6 @@ function setRiskFilter(riskLevel) {
         document.querySelector('.card-projects')?.classList.add('active');
         document.querySelector('.card-districts')?.classList.add('active');
     }
-
-    // Make sure we are in list view when filtering
-    closeSidePanel();
 
     filterCatchmentList();
 }

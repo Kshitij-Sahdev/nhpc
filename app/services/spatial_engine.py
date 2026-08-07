@@ -14,8 +14,9 @@ import os
 from typing import Dict, List, Optional, Tuple, Any
 import logging
 
+import math
 try:
-    from shapely.geometry import Point, Polygon
+    from shapely.geometry import Point, Polygon, box
     from shapely.ops import nearest_points
     from pyproj import Geod
     SHAPELY_AVAILABLE = True
@@ -41,16 +42,50 @@ def parse_kml_coordinates(coords_str: str) -> List[Tuple[float, float]]:
     return points
 
 
+def clean_project_name(raw_name: str) -> str:
+    """Normalizes raw KML/GeoJSON placemark names to official NHPC project names."""
+    name = raw_name.replace(" (Project)", "").replace(" (Catchment)", "").replace(" Catchment area", "").replace("Corrected", "").strip()
+    mapping = {
+        "Dibang": "Dibang Multipurpose Project",
+        "Dibang Multipurpose Project": "Dibang Multipurpose Project",
+        "Kishanganga": "Kishanganga HEP",
+        "Kishanganga HEP": "Kishanganga HEP",
+        "Tanakpur": "Tanakpur HEP",
+        "SubLowdam": "Subansiri Lower HEP",
+        "Subansiri Lower": "Subansiri Lower HEP",
+        "tld4": "Teesta Low Dam IV HEP",
+        "Teesta Low Dam IV": "Teesta Low Dam IV HEP",
+        "nbpdam": "Nimoo Bazgo HEP",
+        "Nimoo Bazgo": "Nimoo Bazgo HEP",
+        "ChutakPS": "Chutak Power Station",
+        "Chutak": "Chutak Power Station",
+        "Uri_I": "Uri-I Power Station",
+        "Uri I": "Uri-I Power Station",
+        "Uri_II": "Uri-II Power Station",
+        "Uri II": "Uri-II Power Station",
+        "Baira": "Baira Siul Power Station",
+        "Salal": "Salal Power Station",
+        "Chamera-I": "Chamera-I HEP",
+        "Chamera-II": "Chamera-II HEP",
+        "Chamera-III": "Chamera-III HEP",
+        "Parbati-II": "Parbati-II HEP",
+        "Parbati-III": "Parbati-III HEP",
+        "Ranjit Sagar": "Ranjit Sagar Hydro Project"
+    }
+    return mapping.get(name, name)
+
+
 class SpatialCatchmentEngine:
     def __init__(self, kml_path: Optional[str] = None):
         self.kml_path = kml_path or "Catchment_NHPC.KML"
         self.catchments: Dict[str, Dict[str, Any]] = {}
         self.shapely_polygons: Dict[str, Any] = {}
         self.geojson_cache: Optional[Dict[str, Any]] = None
+        self.grids_cache: Optional[Dict[str, List[Dict[str, Any]]]] = None
         self._loaded = False
 
     def load_catchments(self) -> Dict[str, Dict[str, Any]]:
-        """Parse KML file, simplify polygon geometries, and build cached catchment objects."""
+        """Parse KML file, simplify polygon geometries, and build deduplicated catchment objects."""
         if self._loaded:
             return self.catchments
 
@@ -62,8 +97,15 @@ class SpatialCatchmentEngine:
             import update_forecasts
             plants_kml = update_forecasts.parse_kml(self.kml_path)
 
-            for idx, plant in enumerate(plants_kml):
-                name = plant.get("name", f"Catchment-{idx+1}")
+            unique_idx = 1
+            for plant in plants_kml:
+                raw_name = plant.get("name", f"Catchment-{unique_idx}")
+                name = clean_project_name(raw_name)
+
+                # Skip duplicate entries for the same project
+                if name in self.catchments:
+                    continue
+
                 boundaries = plant.get("boundaries", [])
                 lat = plant.get("lat", 0.0)
                 lon = plant.get("lon", 0.0)
@@ -90,7 +132,7 @@ class SpatialCatchmentEngine:
                         except Exception as e:
                             logger.error(f"Failed to simplify polygon for {name}: {e}")
 
-                    catchment_id = f"CATCH-{idx+1:03d}"
+                    catchment_id = f"CATCH-{unique_idx:03d}"
                     self.catchments[name] = {
                         "catchment_id": catchment_id,
                         "catchment_name": name,
@@ -99,9 +141,10 @@ class SpatialCatchmentEngine:
                         "geo_coordinates": simplified_pts, # Shapely [lon, lat]
                         "monitored_assets": [name]
                     }
+                    unique_idx += 1
 
             self._loaded = True
-            logger.info(f"Loaded and simplified {len(self.catchments)} catchment boundary polygons from {self.kml_path}")
+            logger.info(f"Loaded {len(self.catchments)} unique project catchments from {self.kml_path}")
         except Exception as e:
             logger.error(f"Error parsing KML catchment file: {e}")
 
@@ -137,6 +180,118 @@ class SpatialCatchmentEngine:
             "features": features
         }
         return self.geojson_cache
+
+    def generate_catchment_grids(self, cell_size_km: float = 12.0) -> Dict[str, List[Dict[str, Any]]]:
+        """Subdivide each catchment into 12km x 12km grid squares and calculate geo centroids."""
+        if self.grids_cache:
+            return self.grids_cache
+
+        self.load_catchments()
+        all_grids: Dict[str, List[Dict[str, Any]]] = {}
+
+        for name, data in self.catchments.items():
+            poly = self.shapely_polygons.get(name)
+            if not poly or not SHAPELY_AVAILABLE:
+                # Fallback single grid at centroid if polygon unavailable
+                c_lat = data["centroid"]["lat"]
+                c_lon = data["centroid"]["lon"]
+                all_grids[name] = [{
+                    "grid_id": f"{data['catchment_id']}-G001",
+                    "catchment_name": name,
+                    "catchment_id": data["catchment_id"],
+                    "centroid": {"lat": c_lat, "lon": c_lon},
+                    "coordinates": [[c_lat - 0.05, c_lon - 0.05], [c_lat + 0.05, c_lon - 0.05],
+                                    [c_lat + 0.05, c_lon + 0.05], [c_lat - 0.05, c_lon + 0.05],
+                                    [c_lat - 0.05, c_lon - 0.05]]
+                }]
+                continue
+
+            minx, miny, maxx, maxy = poly.bounds
+            avg_lat = (miny + maxy) / 2.0
+            lat_step = cell_size_km / 111.0
+            lon_step = cell_size_km / (111.0 * math.cos(math.radians(avg_lat)))
+
+            cat_grids = []
+            grid_idx = 1
+            y = miny
+            while y < maxy:
+                x = minx
+                while x < maxx:
+                    cell_box = box(x, y, x + lon_step, y + lat_step)
+                    if poly.intersects(cell_box):
+                        try:
+                            inter = poly.intersection(cell_box)
+                            cent = inter.centroid
+                            cent_lat = round(cent.y, 4)
+                            cent_lon = round(cent.x, 4)
+                        except Exception:
+                            cent_lat = round(y + lat_step / 2.0, 4)
+                            cent_lon = round(x + lon_step / 2.0, 4)
+
+                        grid_id = f"{data['catchment_id']}-G{grid_idx:03d}"
+                        cat_grids.append({
+                            "grid_id": grid_id,
+                            "catchment_name": name,
+                            "catchment_id": data["catchment_id"],
+                            "grid_index": grid_idx,
+                            "centroid": {"lat": cent_lat, "lon": cent_lon},
+                            "coordinates": [
+                                [round(y, 5), round(x, 5)],
+                                [round(y + lat_step, 5), round(x, 5)],
+                                [round(y + lat_step, 5), round(x + lon_step, 5)],
+                                [round(y, 5), round(x + lon_step, 5)],
+                                [round(y, 5), round(x, 5)]
+                            ]
+                        })
+                        grid_idx += 1
+                    x += lon_step
+                y += lat_step
+
+            if not cat_grids:
+                c_lat = data["centroid"]["lat"]
+                c_lon = data["centroid"]["lon"]
+                cat_grids.append({
+                    "grid_id": f"{data['catchment_id']}-G001",
+                    "catchment_name": name,
+                    "catchment_id": data["catchment_id"],
+                    "grid_index": 1,
+                    "centroid": {"lat": c_lat, "lon": c_lon},
+                    "coordinates": [[c_lat - 0.05, c_lon - 0.05], [c_lat + 0.05, c_lon - 0.05],
+                                    [c_lat + 0.05, c_lon + 0.05], [c_lat - 0.05, c_lon + 0.05],
+                                    [c_lat - 0.05, c_lon - 0.05]]
+                })
+
+            all_grids[name] = cat_grids
+
+        self.grids_cache = all_grids
+        return self.grids_cache
+
+    def get_grids_geojson(self) -> Dict[str, Any]:
+        """Returns GeoJSON FeatureCollection of all 12km x 12km grid squares."""
+        grids_dict = self.generate_catchment_grids()
+        features = []
+        for name, grid_list in grids_dict.items():
+            for g in grid_list:
+                # Convert Leaflet [lat, lon] to GeoJSON [lon, lat]
+                coords_geo = [[[p[1], p[0]] for p in g["coordinates"]]]
+                features.append({
+                    "type": "Feature",
+                    "id": g["grid_id"],
+                    "properties": {
+                        "grid_id": g["grid_id"],
+                        "catchment_name": name,
+                        "catchment_id": g["catchment_id"],
+                        "centroid": g["centroid"]
+                    },
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": coords_geo
+                    }
+                })
+        return {
+            "type": "FeatureCollection",
+            "features": features
+        }
 
     def distance_point_to_polygon_km(self, lat: float, lon: float, poly: Any) -> float:
         """Calculate exact WGS84 geodesic distance in kilometers from point to polygon boundary."""

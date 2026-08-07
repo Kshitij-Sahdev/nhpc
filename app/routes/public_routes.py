@@ -116,6 +116,26 @@ def get_geojson_catchments():
         return jsonify({"error": str(e)}), 500
 
 
+@public_bp.route("/api/v1/geojson/grids", methods=["GET"])
+def get_geojson_grids():
+    """GeoJSON FeatureCollection of all 12km x 12km catchment grid squares."""
+    try:
+        from app.services.spatial_engine import spatial_engine
+        return jsonify(spatial_engine.get_grids_geojson()), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@public_bp.route("/api/v1/india-outline", methods=["GET"])
+def get_india_outline_api():
+    """GeoJSON FeatureCollection of India boundary outline."""
+    try:
+        from app.services.india_boundary_service import get_india_outline
+        return jsonify(get_india_outline()), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @public_bp.route("/api/v1/rivers", methods=["GET"])
 def get_rivers():
     """GeoJSON FeatureCollection of major Indian river channel vectors."""

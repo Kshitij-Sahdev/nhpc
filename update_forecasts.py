@@ -116,12 +116,6 @@ def clean_name(pm_name: Optional[str], doc_name: str) -> str:
     if raw_name.lower() in ["unnamed", "export_output", ""]:
         raw_name = doc_clean
 
-    # Append (Project) or (Catchment) to distinguish duplicates
-    if doc_name.endswith('.kml') and raw_name in ["Kishanganga HEP", "Dibang Multipurpose Project"]:
-        raw_name = f"{raw_name} (Project)"
-    elif doc_name.endswith('.shp') and raw_name in ["Kishanganga HEP"]:
-        raw_name = f"{raw_name} (Catchment)"
-
     raw_name = raw_name.replace("_", " ")
     return raw_name.strip()
 
