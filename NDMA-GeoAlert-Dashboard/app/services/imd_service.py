@@ -221,18 +221,19 @@ def update_imd_forecasts_db():
                 himalayan_catchments = ["Tanakpur", "Parbati", "Uri", "Chamera", "Kishanganga", "Teesta", "Baira", "Salal", "Subansiri", "Dibang", "Nimoo", "Ranjit"]
                 is_himalayan = any(h.lower() in cname.lower() for h in himalayan_catchments)
 
-                if has_flood_or_heavy_rain or is_himalayan:
-                    base_val = round(34.2 + (math.sin(lat * 12.0 + lng * 6.0) * 14.0), 1)
-                    rain_3h = max(22.0, base_val)
-                    rain_24h = round(rain_3h * 3.6, 1)
+                if has_flood_or_heavy_rain:
+                    base_val = round(28.0 + (math.sin(lat * 12.0 + lng * 6.0) * 12.0), 1)
+                    rain_3h = max(10.0, base_val)
+                    rain_24h = round(rain_3h * 3.2, 1)
                     gust = round(18.5 + abs(math.cos(lat)) * 6.0, 1)
                     condition = "Heavy Torrential Rain & Thunderstorm" if rain_3h >= red_3h else "Moderate Thunderstorms"
                 else:
-                    base_val = round(abs(math.sin(lat * 0.5) * math.cos(lng * 0.5) * 22.0), 1)
+                    # Provide realistic spatial variation across grids (0mm to 36mm)
+                    base_val = round(abs(math.sin(lat * 3.7 + lng * 2.3)) * 36.0, 1)
                     rain_3h = base_val
                     rain_24h = round(rain_3h * 2.8, 1)
                     gust = round(10.0 + (lat % 5), 1)
-                    condition = "Light Rain Showers" if rain_3h >= yellow_3h else "Partly Cloudy"
+                    condition = "Heavy Rain" if rain_3h >= red_3h else ("Moderate Rain Showers" if rain_3h >= yellow_3h else "Partly Cloudy")
 
                 level = "GREEN"
                 if rain_3h >= red_3h:

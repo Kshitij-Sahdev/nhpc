@@ -47,10 +47,7 @@
                                 <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem; flex-wrap: wrap;">
                                     {% if project.imd_forecast %}
                                         {% set imd = project.imd_forecast %}
-                                        <span style="font-size: 0.72rem; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 600; color: #ffffff;
-                                            {% if imd.catchment_status == 'RED' %} background: #d20f39;
-                                            {% elif imd.catchment_status == 'YELLOW' %} background: #df8e1d;
-                                            {% else %} background: #40a02b; {% endif %}">
+                                        <span class="imd-status-badge status-{{ imd.catchment_status | lower }}">
                                             IMD 12km: {{ imd.catchment_status }} ({{ imd.max_rain_3h_mm }}mm/3h)
                                         </span>
                                     {% endif %}
@@ -253,12 +250,12 @@
 
                 {% if imd_catchments %}
                     {% for catchment in imd_catchments %}
-                        <div class="project-card" style="margin-bottom: 1rem; border-left: 4px solid {% if catchment.status == 'RED' %}#d20f39{% elif catchment.status == 'YELLOW' %}#df8e1d{% else %}#40a02b{% endif %};">
+                        <div class="project-card border-{{ catchment.status | lower }}" style="margin-bottom: 1rem;">
                             <div class="project-header">
                                 <div class="project-header-left">
                                     <h3 class="project-name">{{ catchment.catchment_name }}</h3>
                                     <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem;">
-                                        <span style="font-size: 0.75rem; padding: 0.2rem 0.55rem; border-radius: 4px; font-weight: bold; color: #fff; background: {% if catchment.status == 'RED' %}#d20f39{% elif catchment.status == 'YELLOW' %}#df8e1d{% else %}#40a02b{% endif %};">
+                                        <span class="imd-status-badge status-{{ catchment.status | lower }}">
                                             IMD Status: {{ catchment.status }}
                                         </span>
                                         <span class="project-alert-count">{{ catchment.total_grids }} grid boxes</span>
@@ -272,11 +269,11 @@
                             <div style="padding: 0.75rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; background: var(--bg-secondary); border-radius: 6px; margin: 0.5rem 0; font-size: 0.8rem; text-align: center;">
                                 <div>
                                     <div style="color: var(--text-secondary); font-size: 0.72rem;">Max 3h Rain</div>
-                                    <strong style="color: {% if catchment.max_rain_3h_mm >= 30 %}#d20f39{% elif catchment.max_rain_3h_mm >= 15 %}#df8e1d{% else %}var(--text-primary){% endif %};">{{ catchment.max_rain_3h_mm }} mm</strong>
+                                    <strong class="{% if catchment.max_rain_3h_mm >= 30 %}text-red{% elif catchment.max_rain_3h_mm >= 15 %}text-yellow{% else %}text-normal{% endif %}">{{ catchment.max_rain_3h_mm }} mm</strong>
                                 </div>
                                 <div>
                                     <div style="color: var(--text-secondary); font-size: 0.72rem;">Max 24h Rain</div>
-                                    <strong style="color: {% if catchment.max_rain_24h_mm >= 100 %}#d20f39{% elif catchment.max_rain_24h_mm >= 50 %}#df8e1d{% else %}var(--text-primary){% endif %};">{{ catchment.max_rain_24h_mm }} mm</strong>
+                                    <strong class="{% if catchment.max_rain_24h_mm >= 100 %}text-red{% elif catchment.max_rain_24h_mm >= 50 %}text-yellow{% else %}text-normal{% endif %}">{{ catchment.max_rain_24h_mm }} mm</strong>
                                 </div>
                                 <div>
                                     <div style="color: var(--text-secondary); font-size: 0.72rem;">Max Wind Gust</div>
@@ -399,12 +396,12 @@
     </div>
 
     <script>
-        const state_dashboard = {{ alerts | tojson }};
-        const polygon_data = {{ polygon_data | tojson }};
-        const project_sites =  {{ project_sites | tojson }};
-        const gnd_sites = {{ gnd_sites | tojson }};
-        const warning_projects = {{ projects | map(attribute="project_id") | list | tojson }};
-        const severity_colors = {{ severity_colors | tojson }};
+        var state_dashboard = {{ alerts | tojson }};
+        var polygon_data = {{ polygon_data | tojson }};
+        var project_sites = {{ project_sites | tojson }};
+        var gnd_sites = {{ gnd_sites | tojson }};
+        var warning_projects = {{ projects | map(attribute="project_id") | list | tojson }};
+        var severity_colors = {{ severity_colors | tojson }};
 
         const AUTO_REFRESH_INTERVAL_MS = 600000;
         if (window.location.pathname === "/") {

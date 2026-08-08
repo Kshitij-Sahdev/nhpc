@@ -124,3 +124,50 @@
     color: var(--text-muted);
     line-height: 1.4;
 }
+
+/* IMD Status Badges & Borders */
+.imd-status-badge {
+    font-size: 0.72rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 600;
+    color: #ffffff;
+    display: inline-block;
+}
+
+.imd-status-badge.status-red {
+    background: #d20f39;
+}
+
+.imd-status-badge.status-yellow {
+    background: #df8e1d;
+}
+
+.imd-status-badge.status-green {
+    background: #40a02b;
+}
+
+.project-card.border-red {
+    border-left: 4px solid #d20f39;
+}
+
+.project-card.border-yellow {
+    border-left: 4px solid #df8e1d;
+}
+
+.project-card.border-green {
+    border-left: 4px solid #40a02b;
+}
+
+.text-red {
+    color: #d20f39;
+}
+
+.text-yellow {
+    color: #df8e1d;
+}
+
+.text-normal {
+    color: var(--text-primary);
+}
+

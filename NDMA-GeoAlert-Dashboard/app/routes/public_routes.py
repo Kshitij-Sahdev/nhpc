@@ -46,6 +46,11 @@ def api_token_required(func):
     return wrapper
 
 
+@public_bp.route("/health")
+def health_check():
+    return jsonify({"status": "healthy"}), 200
+
+
 @public_bp.route("/")
 def home():
     alerts = get_all_alerts()

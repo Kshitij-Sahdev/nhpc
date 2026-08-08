@@ -1,0 +1,26 @@
+# Version Control
+.git
+.gitignore
+
+# Python Cache & Virtual Envs
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+*.egg-info/
+
+# Logs
+logs/*.log
+*.log
+
+# Archives
+Dump20260610.zip
+*.tar.gz
+
+# Environment & IDE
+.env
+.idea/
+.vscode/
+.DS_Store
