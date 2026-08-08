@@ -86,3 +86,29 @@ body {
     color: var(--text-primary);
     font-weight: 600;
 }
+
+.settings-icon-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: transparent;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-icon-btn:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+    border-color: #94a3b8;
+    transform: rotate(45deg);
+}
+
+.settings-icon-btn i {
+    width: 18px;
+    height: 18px;
+}

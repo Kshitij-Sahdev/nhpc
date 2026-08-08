@@ -4,13 +4,13 @@
 
 {% block content %}
 <div class="catchment-app-container">
-    <!-- Top Catchment Dashboard Status Cards (Interactive Filter Buttons) -->
+    <!-- Top Catchment Dashboard Status Cards (Interactive Filter Buttons + Settings Button) -->
     <section class="catchment-top-bar">
         <div class="catchment-stat-card card-total" onclick="setRiskFilter('ALL')" title="Filter: Show All Catchments">
             <div class="card-icon"><i data-lucide="layers"></i></div>
             <div class="card-data">
                 <span class="card-num" id="stat-total-catchments">{{ catchment_summary.total_catchments }}</span>
-                <span class="card-title">Total Catchments</span>
+                <span class="card-title">Total Projects</span>
             </div>
         </div>
         <div class="catchment-stat-card card-normal" onclick="setRiskFilter('Normal')" title="Filter: Show Normal Risk">
@@ -289,6 +289,69 @@
                     <span>72-Hour Cumulative Rain: <strong id="modal-rain-72h">85.0 mm</strong></span>
                 </div>
             </section>
+        </div>
+    </div>
+</div>
+
+<!-- RAINFALL ALERT THRESHOLDS SETTINGS MODAL -->
+<div class="project-modal-backdrop hidden" id="settings-modal-backdrop" onclick="closeSettingsModal(event)">
+    <div class="project-modal-dialog settings-modal-dialog" onclick="event.stopPropagation()">
+        <header class="modal-header">
+            <div class="modal-title-area">
+                <div class="badge-row">
+                    <span class="risk-badge" style="background: #e2e8f0; color: #0f172a;"><i data-lucide="settings" class="icon-inline"></i> THRESHOLDS</span>
+                </div>
+                <h2>Project Alert Thresholds Settings</h2>
+                <span class="panel-subtitle">Configure 24h Rainfall (mm) alert thresholds (Yellow / Orange / Red) for all 27 projects</span>
+            </div>
+            <button class="modal-close-btn" onclick="closeSettingsModalForce()" title="Close Settings">
+                <i data-lucide="x"></i>
+            </button>
+        </header>
+
+        <div class="modal-body">
+            <!-- Global Quick Bulk Apply Bar -->
+            <div class="global-apply-box">
+                <strong class="section-subtitle">Quick Bulk Apply to All 27 Projects:</strong>
+                <div class="bulk-inputs-row">
+                    <div class="input-cell">
+                        <label class="lbl-yellow">Yellow (mm):</label>
+                        <input type="number" id="global-yellow" value="15.0" min="0" step="0.5" placeholder="15.0">
+                    </div>
+                    <div class="input-cell">
+                        <label class="lbl-orange">Orange (mm):</label>
+                        <input type="number" id="global-orange" value="64.5" min="0" step="0.5" placeholder="64.5">
+                    </div>
+                    <div class="input-cell">
+                        <label class="lbl-red">Red (mm):</label>
+                        <input type="number" id="global-red" value="115.6" min="0" step="0.5" placeholder="115.6">
+                    </div>
+                    <button class="bulk-apply-btn" onclick="applyGlobalToAllProjects()">Apply to All 27</button>
+                </div>
+            </div>
+
+            <!-- Foolproofing Validation Warning Container -->
+            <div class="validation-warning-box hidden" id="threshold-validation-error">
+                <i data-lucide="alert-triangle" class="icon-inline"></i>
+                <span id="validation-error-text">Foolproof validation failed: Thresholds must satisfy 0 &le; Yellow &lt; Orange &lt; Red for all projects.</span>
+            </div>
+
+            <!-- Scrollable 27 Projects Text Field Inputs List -->
+            <section class="panel-section-box">
+                <h3 class="section-title"><i data-lucide="sliders"></i> Per-Project 24h Rain Thresholds (All 27 Projects)</h3>
+                <div class="projects-threshold-scroll-list" id="projects-threshold-list">
+                    <!-- Dynamically populated via map.js for all 27 projects -->
+                </div>
+            </section>
+
+            <div class="settings-actions-row">
+                <button class="settings-reset-btn" onclick="resetAlertThresholdsDefaults()">
+                    <i data-lucide="rotate-ccw" class="icon-inline"></i> Reset All Defaults
+                </button>
+                <button class="settings-apply-btn" id="save-thresholds-btn" onclick="applyAlertThresholds()">
+                    <i data-lucide="check-circle" class="icon-inline"></i> Save All Thresholds
+                </button>
+            </div>
         </div>
     </div>
 </div>

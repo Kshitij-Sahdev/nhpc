@@ -8,6 +8,12 @@ let activeRiskFilter = 'ALL';
 let currentSelectedCatchment = null;
 let modalChart = null;
 
+let currentThresholds = {
+    yellow: 15.0,
+    orange: 64.5,
+    red: 115.6
+};
+
 let allCatchmentData = window.INITIAL_CATCHMENTS || [];
 let catchmentSummary = window.INITIAL_SUMMARY || {};
 
@@ -17,10 +23,11 @@ document.addEventListener('DOMContentLoaded', () => {
         lucide.createIcons();
     }
 
-    // Escape key closes open modal dialog popup
+    // Escape key closes open modal dialog popups
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' || e.key === 'Esc') {
             closeProjectModalForce();
+            closeSettingsModalForce();
         }
     });
 });
@@ -141,7 +148,7 @@ function fetchCatchmentData() {
 
 function updateSummaryTopBar() {
     if (!catchmentSummary) return;
-    document.getElementById('stat-total-catchments').innerText = catchmentSummary.total_catchments || 25;
+    document.getElementById('stat-total-catchments').innerText = catchmentSummary.total_catchments || 27;
     document.getElementById('stat-normal-count').innerText = catchmentSummary.normal || 0;
     document.getElementById('stat-watch-count').innerText = catchmentSummary.watch || 0;
     document.getElementById('stat-warning-count').innerText = catchmentSummary.warning || 0;
@@ -404,6 +411,258 @@ function closeProjectModal(event) {
 function closeProjectModalForce() {
     const backdrop = document.getElementById('project-modal-backdrop');
     if (backdrop) backdrop.classList.add('hidden');
+}
+
+/* PER-PROJECT RAINFALL ALERT THRESHOLDS & FOOLPROOFING VALIDATION */
+let projectThresholdsMap = {};
+
+function initProjectThresholds() {
+    allCatchmentData.forEach(c => {
+        if (!projectThresholdsMap[c.catchment_name]) {
+            projectThresholdsMap[c.catchment_name] = { yellow: 15.0, orange: 64.5, red: 115.6 };
+        }
+    });
+}
+
+function openSettingsModal() {
+    initProjectThresholds();
+    renderProjectsThresholdInputs();
+
+    const backdrop = document.getElementById('settings-modal-backdrop');
+    if (backdrop) backdrop.classList.remove('hidden');
+
+    if (window.lucide) lucide.createIcons();
+}
+
+function closeSettingsModal(event) {
+    if (event.target.id === 'settings-modal-backdrop') {
+        closeSettingsModalForce();
+    }
+}
+
+function closeSettingsModalForce() {
+    const backdrop = document.getElementById('settings-modal-backdrop');
+    if (backdrop) backdrop.classList.add('hidden');
+}
+
+function renderProjectsThresholdInputs() {
+    const container = document.getElementById('projects-threshold-list');
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    allCatchmentData.forEach((c, idx) => {
+        const t = projectThresholdsMap[c.catchment_name] || { yellow: 15.0, orange: 64.5, red: 115.6 };
+        const card = document.createElement('div');
+        card.className = 'project-threshold-card';
+        card.id = `thresh-card-${idx}`;
+        card.innerHTML = `
+            <div class="thresh-card-top">
+                <span class="risk-badge badge-${c.risk_level.toLowerCase()}">${c.risk_level.toUpperCase()}</span>
+                <strong>${c.catchment_name}</strong>
+                <span class="thresh-card-river">(${c.river})</span>
+            </div>
+            <div class="thresh-inputs-row">
+                <div class="t-cell watch-border">
+                    <label>Yellow (mm):</label>
+                    <input type="number" id="thresh-y-${idx}" data-idx="${idx}" data-name="${c.catchment_name}" value="${t.yellow}" min="0" step="0.5" oninput="validateAllProjectThresholds()">
+                </div>
+                <div class="t-cell warning-border">
+                    <label>Orange (mm):</label>
+                    <input type="number" id="thresh-o-${idx}" data-idx="${idx}" data-name="${c.catchment_name}" value="${t.orange}" min="0" step="0.5" oninput="validateAllProjectThresholds()">
+                </div>
+                <div class="t-cell severe-border">
+                    <label>Red (mm):</label>
+                    <input type="number" id="thresh-r-${idx}" data-idx="${idx}" data-name="${c.catchment_name}" value="${t.red}" min="0" step="0.5" oninput="validateAllProjectThresholds()">
+                </div>
+            </div>
+        `;
+        container.appendChild(card);
+    });
+
+    validateAllProjectThresholds();
+}
+
+function applyGlobalToAllProjects() {
+    const gy = parseFloat(document.getElementById('global-yellow').value) || 15.0;
+    const go = parseFloat(document.getElementById('global-orange').value) || 64.5;
+    const gr = parseFloat(document.getElementById('global-red').value) || 115.6;
+
+    allCatchmentData.forEach((c, idx) => {
+        projectThresholdsMap[c.catchment_name] = { yellow: gy, orange: go, red: gr };
+        const yEl = document.getElementById(`thresh-y-${idx}`);
+        const oEl = document.getElementById(`thresh-o-${idx}`);
+        const rEl = document.getElementById(`thresh-r-${idx}`);
+        if (yEl) yEl.value = gy;
+        if (oEl) oEl.value = go;
+        if (rEl) rEl.value = gr;
+    });
+
+    validateAllProjectThresholds();
+}
+
+/* FOOLPROOFING VALIDATION: 0 <= Yellow < Orange < Red */
+function validateAllProjectThresholds() {
+    let isValid = true;
+    let errorMsg = '';
+
+    allCatchmentData.forEach((c, idx) => {
+        const yEl = document.getElementById(`thresh-y-${idx}`);
+        const oEl = document.getElementById(`thresh-o-${idx}`);
+        const rEl = document.getElementById(`thresh-r-${idx}`);
+        const card = document.getElementById(`thresh-card-${idx}`);
+
+        if (!yEl || !oEl || !rEl) return;
+
+        const y = parseFloat(yEl.value);
+        const o = parseFloat(oEl.value);
+        const r = parseFloat(rEl.value);
+
+        let cardValid = true;
+
+        if (isNaN(y) || y < 0) {
+            yEl.classList.add('input-invalid');
+            cardValid = false;
+            errorMsg = `Project "${c.catchment_name}": Yellow threshold must be a non-negative number.`;
+        } else {
+            yEl.classList.remove('input-invalid');
+        }
+
+        if (isNaN(o) || o <= y) {
+            oEl.classList.add('input-invalid');
+            cardValid = false;
+            if (!errorMsg) errorMsg = `Project "${c.catchment_name}": Orange threshold (${o}mm) must be greater than Yellow threshold (${y}mm).`;
+        } else {
+            oEl.classList.remove('input-invalid');
+        }
+
+        if (isNaN(r) || r <= o) {
+            rEl.classList.add('input-invalid');
+            cardValid = false;
+            if (!errorMsg) errorMsg = `Project "${c.catchment_name}": Red threshold (${r}mm) must be greater than Orange threshold (${o}mm).`;
+        } else {
+            rEl.classList.remove('input-invalid');
+        }
+
+        if (card) {
+            if (cardValid) card.classList.remove('card-has-error');
+            else card.classList.add('card-has-error');
+        }
+
+        if (!cardValid) isValid = false;
+    });
+
+    const warningBox = document.getElementById('threshold-validation-error');
+    const errorText = document.getElementById('validation-error-text');
+    const saveBtn = document.getElementById('save-thresholds-btn');
+
+    if (!isValid) {
+        if (warningBox) warningBox.classList.remove('hidden');
+        if (errorText) errorText.innerText = `Foolproof Check Failed: ${errorMsg}`;
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.style.opacity = '0.5';
+            saveBtn.style.cursor = 'not-allowed';
+        }
+    } else {
+        if (warningBox) warningBox.classList.add('hidden');
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.style.opacity = '1.0';
+            saveBtn.style.cursor = 'pointer';
+        }
+    }
+
+    return isValid;
+}
+
+function resetAlertThresholdsDefaults() {
+    projectThresholdsMap = {};
+    initProjectThresholds();
+    renderProjectsThresholdInputs();
+}
+
+function applyAlertThresholds() {
+    if (!validateAllProjectThresholds()) return;
+
+    allCatchmentData.forEach((c, idx) => {
+        const yEl = document.getElementById(`thresh-y-${idx}`);
+        const oEl = document.getElementById(`thresh-o-${idx}`);
+        const rEl = document.getElementById(`thresh-r-${idx}`);
+        if (yEl && oEl && rEl) {
+            projectThresholdsMap[c.catchment_name] = {
+                yellow: parseFloat(yEl.value),
+                orange: parseFloat(oEl.value),
+                red: parseFloat(rEl.value)
+            };
+        }
+    });
+
+    reevaluateAllProjectAlerts();
+    closeSettingsModalForce();
+}
+
+function reevaluateAllProjectAlerts() {
+    let severeCount = 0;
+    let warningCount = 0;
+    let watchCount = 0;
+    let normalCount = 0;
+
+    allCatchmentData.forEach(c => {
+        const t = projectThresholdsMap[c.catchment_name] || { yellow: 15.0, orange: 64.5, red: 115.6 };
+        let maxGridAlert = 'GREEN';
+        let alertGrids = 0;
+
+        if (c.grid_cells) {
+            c.grid_cells.forEach(g => {
+                const r24 = g.weather ? g.weather.rain_24h_mm : 0;
+                if (r24 >= t.red) {
+                    g.alert_level = 'RED';
+                    alertGrids++;
+                    maxGridAlert = 'RED';
+                } else if (r24 >= t.orange) {
+                    g.alert_level = 'ORANGE';
+                    alertGrids++;
+                    if (maxGridAlert !== 'RED') maxGridAlert = 'ORANGE';
+                } else if (r24 >= t.yellow) {
+                    g.alert_level = 'YELLOW';
+                    alertGrids++;
+                    if (maxGridAlert !== 'RED' && maxGridAlert !== 'ORANGE') maxGridAlert = 'YELLOW';
+                } else {
+                    g.alert_level = 'GREEN';
+                }
+            });
+        }
+
+        let catRisk = 'Normal';
+        const cRain = c.rainfall_forecast ? c.rainfall_forecast.rain_24h_mm : 0;
+        if (maxGridAlert === 'RED' || cRain >= t.red) {
+            catRisk = 'Severe';
+            severeCount++;
+        } else if (maxGridAlert === 'ORANGE' || cRain >= t.orange) {
+            catRisk = 'Warning';
+            warningCount++;
+        } else if (maxGridAlert === 'YELLOW' || cRain >= t.yellow) {
+            catRisk = 'Watch';
+            watchCount++;
+        } else {
+            normalCount++;
+        }
+
+        c.risk_level = catRisk;
+        if (c.grid_summary) {
+            c.grid_summary.highest_grid_alert = maxGridAlert;
+            c.grid_summary.alert_grids = alertGrids;
+        }
+    });
+
+    catchmentSummary.severe = severeCount;
+    catchmentSummary.warning = warningCount;
+    catchmentSummary.watch = watchCount;
+    catchmentSummary.normal = normalCount;
+
+    updateSummaryTopBar();
+    renderCatchmentsOnMap();
 }
 
 function renderModalChart(timeline) {

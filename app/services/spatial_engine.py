@@ -75,6 +75,35 @@ def clean_project_name(raw_name: str) -> str:
     return mapping.get(name, name)
 
 
+VERIFIED_PROJECT_COORDS = {
+    "Tanakpur HEP": (29.0725, 80.1189),
+    "Subansiri Lower HEP": (27.5536, 94.2586),
+    "Teesta Low Dam IV HEP": (26.9642, 88.4722),
+    "Kishanganga HEP": (34.6111, 74.6733),
+    "Dibang Multipurpose Project": (28.2250, 95.7720),
+    "Nimoo Bazgo HEP": (34.2153, 77.1853),
+    "Chamera-I HEP": (32.5966, 75.9857),
+    "Ranjit Sagar Hydro Project": (32.4410, 75.7280),
+    "Chamera-III HEP": (32.4598, 76.2443),
+    "Chamera-II HEP": (32.4734, 76.2552),
+    "Churi G&D": (32.4596, 76.3626),
+    "Baloo G&D": (32.5450, 76.2108),
+    "Baira Siul Power Station": (32.8063, 76.1418),
+    "Bhaledh": (32.7114, 76.3283),
+    "Siul": (32.8242, 75.9232),
+    "Surangani G&D": (32.7255, 76.1137),
+    "Chutak Power Station": (34.4591, 76.0746),
+    "Uri-I Power Station": (34.1450, 74.0450),
+    "Uri-II Power Station": (34.0921, 74.0318),
+    "Salal Power Station": (33.1378, 74.8044),
+    "Parbati-III HEP": (31.7398, 77.2576),
+    "Parbati-II HEP": (31.7836, 77.3275),
+    "Jiwa": (31.8653, 77.4779),
+    "Jigrai": (31.9458, 77.4617),
+    "Hurla": (31.8980, 77.3876)
+}
+
+
 class SpatialCatchmentEngine:
     def __init__(self, kml_path: Optional[str] = None):
         self.kml_path = kml_path or "Catchment_NHPC.KML"
@@ -102,14 +131,11 @@ class SpatialCatchmentEngine:
                 raw_name = plant.get("name", f"Catchment-{unique_idx}")
                 name = clean_project_name(raw_name)
 
-                # Skip duplicate entries for the same project
+                # Ensure unique key for each of the 27 placemarks
                 if name in self.catchments:
-                    continue
+                    name = f"{name} ({unique_idx})"
 
                 boundaries = plant.get("boundaries", [])
-                lat = plant.get("lat", 0.0)
-                lon = plant.get("lon", 0.0)
-
                 if boundaries and len(boundaries[0]) >= 3:
                     pts_leaflet = boundaries[0] # [lat, lon]
                     pts_geo = [[p[1], p[0]] for p in pts_leaflet] # [lon, lat] for Shapely
@@ -131,6 +157,14 @@ class SpatialCatchmentEngine:
                                 simplified_pts = list(poly_obj.exterior.coords)
                         except Exception as e:
                             logger.error(f"Failed to simplify polygon for {name}: {e}")
+
+                    # Calculate centroid directly from Catchment KML/JSON geometry
+                    if SHAPELY_AVAILABLE and poly_obj and poly_obj.is_valid:
+                        c_pt = poly_obj.centroid
+                        lat, lon = round(c_pt.y, 4), round(c_pt.x, 4)
+                    else:
+                        lat = round(sum(p[0] for p in pts_leaflet) / len(pts_leaflet), 4)
+                        lon = round(sum(p[1] for p in pts_leaflet) / len(pts_leaflet), 4)
 
                     catchment_id = f"CATCH-{unique_idx:03d}"
                     self.catchments[name] = {
