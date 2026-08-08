@@ -26,11 +26,11 @@ COPY . .
 # Ensure logs directory exists
 RUN mkdir -p logs
 
-EXPOSE 8000
+EXPOSE 5000
 
 # Health check to ensure service readiness
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+  CMD curl -f http://localhost:5000/health || exit 1
 
 # Production WSGI server startup (1 worker + 4 threads to prevent scheduler duplication)
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "1", "--threads", "4", "--timeout", "120", "run:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "120", "run:app"]
