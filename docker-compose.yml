@@ -7,8 +7,8 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-rootpassword}
       MYSQL_DATABASE: ${DB_NAME:-ndma_geoalert}
-    ports:
-      - "3306:3306"
+    expose:
+      - "3306"
     volumes:
       - db_data:/var/lib/mysql
       - ./NDMA-GeoAlert-Dashboard/Dump20260610.sql:/docker-entrypoint-initdb.d/dump.sql:ro
@@ -27,8 +27,6 @@ services:
     expose:
       - "8000"
     command: gunicorn --bind 0.0.0.0:8000 --workers 1 --threads 4 --timeout 120 run:app
-    ports:
-      - "8000:8000"
     volumes:
       - ./NDMA-GeoAlert-Dashboard/logs:/app/logs
     env_file:
