@@ -1,0 +1,74 @@
+html, body {
+    height: 100vh;
+    max-height: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.dashboard {
+    display: flex;
+    flex-direction: row;
+    height: calc(100vh - 65px);
+    max-height: calc(100vh - 65px);
+    width: 100%;
+    overflow: hidden;
+    background-color: var(--bg-tertiary);
+    position: relative;
+    box-sizing: border-box;
+}
+
+.sidebar {
+    width: 38%;
+    min-width: 340px;
+    max-width: 520px;
+    height: calc(100vh - 85px);
+    max-height: calc(100vh - 85px);
+    overflow-y: auto;
+    margin: 0.5rem 0.5rem 0.5rem 1rem;
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--bg-secondary);
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.35);
+    box-sizing: border-box;
+    transition:
+        width 0.3s ease,
+        margin 0.3s ease,
+        padding 0.3s ease;
+}
+
+.sidebar-hidden {
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    overflow: hidden;
+}
+
+.map-container {
+    flex: 1;
+    height: calc(100vh - 85px);
+    max-height: calc(100vh - 85px);
+    margin: 0.5rem 1rem 0.5rem 0.5rem;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--bg-secondary);
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.35);
+    position: relative;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.map {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 100% !important;
+    width: 100% !important;
+    border-radius: 18px;
+}

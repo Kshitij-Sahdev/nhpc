@@ -1,0 +1,421 @@
+{% extends "base.html" %}
+
+{% block title %}
+    NDMA Alerts Overview
+{% endblock %}
+
+{% block content %}
+    <div class="dashboard">
+        <div id="sidebar" class="sidebar">
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab project-tab active" data-tab="projects">
+                    Project Overview
+                </button>
+
+                <button class="sidebar-tab states-tab" data-tab="alerts">
+                    State Overview
+                </button>
+
+                <button class="sidebar-tab imd-tab" data-tab="imd">
+                    IMD Catchments
+                </button>
+            </div>
+
+            <div id="projects-tab" class="tab-content active">
+                <div class="project-search-container">
+                    <input
+                        id="project-search"
+                        class="project-search"
+                        type="text"
+                        placeholder="Search projects..."
+                    >
+
+                    <div id="project-search-results" class="project-search-results"></div>
+                </div>
+
+                {% if projects %}
+                    {% for project in projects %}
+                    <div
+                        class="project-card"
+                        data-project-name="{{ project.project_name }}"
+                        data-project-id="{{ project.project_id }}"
+                    >
+                        <div class="project-header">
+                            <div class="project-header-left">
+                                <h3 class="project-name">{{ project.project_name }}</h3>
+
+                                <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem; flex-wrap: wrap;">
+                                    {% if project.imd_forecast %}
+                                        {% set imd = project.imd_forecast %}
+                                        <span style="font-size: 0.72rem; padding: 0.15rem 0.5rem; border-radius: 4px; font-weight: 600; color: #ffffff;
+                                            {% if imd.catchment_status == 'RED' %} background: #d20f39;
+                                            {% elif imd.catchment_status == 'YELLOW' %} background: #df8e1d;
+                                            {% else %} background: #40a02b; {% endif %}">
+                                            IMD 12km: {{ imd.catchment_status }} ({{ imd.max_rain_3h_mm }}mm/3h)
+                                        </span>
+                                    {% endif %}
+                                    <span class="project-alert-count">{{ project.alerts | length }} NDMA alerts</span>
+                                </div>
+                            </div>
+
+                            <button
+                                class="project-locate-button"
+                                data-project-name="{{ project.project_name }}"
+                                title="Show on Map"
+                            >
+                                <i data-lucide="map-pin"></i>
+                            </button>
+                        </div>
+
+                        <div class="project-alert-list">
+                            {% for alert in project.alerts %}
+                                <button
+                                    class="project-alert-item"
+                                    data-alert-id="{{ alert.alert_id }}"
+                                    data-project-id="{{ project.project_id }}"
+                                >
+                                    <span class="severity-indicator severity-{{ alert.severity|lower }}"></span>
+
+                                    <div class="project-alert-content">
+                                        <span class="project-alert-title">{{ alert.event }}</span>
+
+                                        <span class="project-alert-meta">
+                                            {{ alert.state_name }}
+                                            •
+                                            {% if alert.warning_type == "INSIDE_ALERT_POLYGON" %}
+                                                Inside Affected Area
+                                            {% else %}
+                                                {{ "%.1f"|format(alert.distance_km) }} KM away
+                                            {% endif %}
+                                            •
+                                            Expires
+                                            {{ alert.expires.strftime("%d %b %Y, %I:%M %p") }}
+                                        </span>
+                                    </div>
+                                </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                
+                {% else %}
+                    <div class="no-data">
+                        No active warnings at present.
+                    </div>
+                {% endif %}
+            </div>
+
+            <div id="alerts-tab" class="tab-content">
+                {% if alerts %}
+                    {% for state in alerts %}
+                        <div class="state-section">
+                            <div class="state-header">
+                                <h2 class="state-title">{{ state.state_name }}</h2>
+
+                                <span class="state-alert-count"> {{ state.alerts | length }} alerts</span>
+                            </div>
+
+                            {% if state.alerts %}
+                                {% for alert in state.alerts %}
+                                    <details
+                                        class="alert-card"
+                                        id="alert-card-{{ alert.alert_id }}"
+                                        data-alert-id="{{ alert.alert_id }}"
+                                    >
+                                        <summary class="alert-summary">
+                                            <div class="alert-summary-left">
+                                                <div class="severity-indicator severity-{{ alert.severity | lower }}"></div>
+
+                                                <div class="alert-summary-text">
+                                                    <div class="alert-title-row">
+                                                        <h3 class="alert-event">{{ alert.event }}</h3>
+
+                                                        <span class="alert-identifier"> {{ alert.alert_identifier }} </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="alert-summary-right">
+                                                {% if alert.expires %}
+                                                    <div class="alert-expiry">
+                                                        <label> Valid Until </label>
+
+                                                        <span> {{ alert.expires.strftime("%d %b %Y, %I:%M %p") }} </span>
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </summary>
+
+                                        <div class="alert-details">
+                                            <div class="alert-headline-box">{{ alert.headline_en }}</div>
+
+                                            <div class="detail-section">
+                                                <div class="detail-section-title">Alert Classification</div>
+
+                                                <div class="alert-detail-grid">
+                                                    <div class="detail-item">
+                                                        <label> Severity </label>
+
+                                                        <span> {{ alert.severity }} </span>
+                                                    </div>
+
+                                                    <div class="detail-item">
+                                                        <label> Urgency </label>
+
+                                                        <span> {{ alert.urgency }} </span>
+                                                    </div>
+
+                                                    <div class="detail-item">
+                                                        <label> Certainty </label>
+
+                                                        <span> {{ alert.certainty }} </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="detail-section">
+                                                <div class="detail-section-title">Timeline</div>
+
+                                                <div class="alert-detail-grid">
+                                                    {% if alert.effective %}
+                                                        <div class="detail-item">
+                                                            <label> Effective </label>
+
+                                                            <span> {{ alert.effective.strftime("%d %b %Y, %I:%M %p") }} </span>
+                                                        </div>
+                                                    {% endif %}
+                                                    
+                                                    {% if alert.onset %}
+                                                        <div class="detail-item">
+                                                            <label> Onset </label>
+
+                                                            <span> {{ alert.onset.strftime("%d %b %Y, %I:%M %p") }} </span>
+                                                        </div>
+                                                    {% endif %}
+                                                    
+                                                    {% if alert.expires %}
+                                                        <div class="detail-item">
+                                                            <label> Expires </label>
+
+                                                            <span> {{ alert.expires.strftime("%d %b %Y, %I:%M %p") }} </span>
+                                                        </div>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+
+                                            {% if alert.district_names %}
+                                                <div class="detail-section">
+                                                    <div class="detail-section-title">Affected Districts</div>
+
+                                                    <div class="district-tags">
+                                                        {% for district in alert.district_names %}
+                                                            <span class="district-tag"> {{ district }} </span>
+                                                        {% endfor %}
+                                                    </div>
+                                                </div>
+                                            {% endif %}
+
+                                            {% if alert.affected_projects %}
+                                                <div class="detail-section">
+                                                    <div class="detail-section-title">Affected Projects</div>
+
+                                                    <div class="project-tags">
+                                                        {% for project in alert.affected_projects %}
+                                                            <button class="project-tag" data-project-id="{{ project.project_id }}">
+                                                                {{ project.project_name }}
+                                                            </button>
+                                                        {% endfor %}
+                                                    </div>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    </details>
+                                {% endfor %}
+                            {% else %}
+                                <div class="no-data">No alerts currently active</div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="no-data">
+                        No data is available to show. Please contact admin.
+                    </div>
+                {% endif %}
+            </div>
+
+            <div id="imd-tab" class="tab-content">
+                <div style="padding: 0.75rem 1rem; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 1rem;">
+                    <h4 style="margin: 0 0 0.25rem 0; font-size: 0.9rem; color: var(--text-primary);">IMD Mausamgram 12km Catchment Database</h4>
+                    <p style="margin: 0; font-size: 0.8rem; color: var(--text-secondary);">
+                        Live GFS/MME 0.125° grid forecasts queried from MySQL database table <code>imd_forecasts</code> across all 27 hydro plant catchments.
+                    </p>
+                </div>
+
+                {% if imd_catchments %}
+                    {% for catchment in imd_catchments %}
+                        <div class="project-card" style="margin-bottom: 1rem; border-left: 4px solid {% if catchment.status == 'RED' %}#d20f39{% elif catchment.status == 'YELLOW' %}#df8e1d{% else %}#40a02b{% endif %};">
+                            <div class="project-header">
+                                <div class="project-header-left">
+                                    <h3 class="project-name">{{ catchment.catchment_name }}</h3>
+                                    <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: 0.25rem;">
+                                        <span style="font-size: 0.75rem; padding: 0.2rem 0.55rem; border-radius: 4px; font-weight: bold; color: #fff; background: {% if catchment.status == 'RED' %}#d20f39{% elif catchment.status == 'YELLOW' %}#df8e1d{% else %}#40a02b{% endif %};">
+                                            IMD Status: {{ catchment.status }}
+                                        </span>
+                                        <span class="project-alert-count">{{ catchment.total_grids }} grid boxes</span>
+                                    </div>
+                                </div>
+                                <button class="project-locate-button" data-project-name="{{ catchment.catchment_name }}" title="Show on Map">
+                                    <i data-lucide="map-pin"></i>
+                                </button>
+                            </div>
+
+                            <div style="padding: 0.75rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; background: var(--bg-secondary); border-radius: 6px; margin: 0.5rem 0; font-size: 0.8rem; text-align: center;">
+                                <div>
+                                    <div style="color: var(--text-secondary); font-size: 0.72rem;">Max 3h Rain</div>
+                                    <strong style="color: {% if catchment.max_rain_3h_mm >= 30 %}#d20f39{% elif catchment.max_rain_3h_mm >= 15 %}#df8e1d{% else %}var(--text-primary){% endif %};">{{ catchment.max_rain_3h_mm }} mm</strong>
+                                </div>
+                                <div>
+                                    <div style="color: var(--text-secondary); font-size: 0.72rem;">Max 24h Rain</div>
+                                    <strong style="color: {% if catchment.max_rain_24h_mm >= 100 %}#d20f39{% elif catchment.max_rain_24h_mm >= 50 %}#df8e1d{% else %}var(--text-primary){% endif %};">{{ catchment.max_rain_24h_mm }} mm</strong>
+                                </div>
+                                <div>
+                                    <div style="color: var(--text-secondary); font-size: 0.72rem;">Max Wind Gust</div>
+                                    <strong style="color: var(--text-primary);">{{ catchment.max_gust_m_s }} m/s</strong>
+                                </div>
+                            </div>
+
+                            {% if catchment.grid_details %}
+                                <button class="open-grid-modal-btn" data-catchment-name="{{ catchment.catchment_name }}" data-grid-count="{{ catchment.grid_details | length }}" style="margin-top: 0.5rem; background: none; border: none; color: #2563eb; font-weight: 600; font-size: 0.82rem; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; padding: 0;">
+                                    <i data-lucide="layers" style="width: 14px; height: 14px;"></i> View 12km Grid Forecast Data ({{ catchment.grid_details | length }} points)
+                                </button>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div> <!-- End of #imd-tab -->
+        </div> <!-- End of #sidebar -->
+
+        <div class="map-container">
+            <div class="map" id="map"></div>
+        </div>
+    </div> <!-- End of .dashboard -->
+
+    <!-- IMD 12km Grid Forecast Modal Popup -->
+    <div id="grid-modal" class="modal">
+        <div class="modal-content" style="max-width: 640px; max-height: 80vh; overflow-y: auto; padding: 1.5rem; position: relative;">
+            <button id="close-grid-modal" class="close-modal" style="position: absolute; right: 1rem; top: 1rem; border: none; background: transparent; cursor: pointer;"><i data-lucide="x"></i></button>
+
+            <h3 id="grid-modal-title" style="margin-bottom: 0.25rem; color: var(--text-primary);">12km Grid Forecast Data</h3>
+            <p id="grid-modal-subtitle" style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1rem;"></p>
+
+            <div id="grid-modal-body" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 55vh; overflow-y: auto;"></div>
+        </div>
+    </div>
+
+    <div id="alert-modal" class="modal">
+        <div class="modal-content">
+            <button id="close-modal" class="close-modal"><i data-lucide="x"></i></button>
+
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Homepage Settings Modal -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content" style="max-width: 680px; max-height: 85vh; overflow-y: auto; padding: 1.5rem;">
+            <button id="close-settings-modal" class="close-modal" style="position: absolute; right: 1rem; top: 1rem; border: none; background: transparent; cursor: pointer;"><i data-lucide="x"></i></button>
+
+            <h2 style="margin-bottom: 0.5rem;">Dashboard Settings</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1.25rem; font-size: 0.9rem;">Configure catchment warning thresholds, monitored states, and alert distances.</p>
+
+            <form method="POST" action="/settings" style="display: flex; flex-direction: column; gap: 1rem;">
+                <h4 style="margin-top: 0.5rem; color: var(--text-primary); border-bottom: 1px solid var(--border); padding-bottom: 0.4rem;">
+                    IMD Mausamgram 12km Catchment Thresholds (27 Projects)
+                </h4>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">
+                    <label style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.25rem;">
+                        3h Rain Red Alert (mm)
+                        <input type="number" step="0.1" name="alert_rain_3h_red" value="{{ settings.alert_rain_3h_red or '30.0' }}" style="padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary);">
+                    </label>
+
+                    <label style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.25rem;">
+                        3h Rain Yellow Alert (mm)
+                        <input type="number" step="0.1" name="alert_rain_3h_yellow" value="{{ settings.alert_rain_3h_yellow or '15.0' }}" style="padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary);">
+                    </label>
+
+                    <label style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.25rem;">
+                        24h Rain Red Alert (mm)
+                        <input type="number" step="0.1" name="alert_rain_24h_red" value="{{ settings.alert_rain_24h_red or '100.0' }}" style="padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary);">
+                    </label>
+
+                    <label style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.25rem;">
+                        24h Rain Yellow Alert (mm)
+                        <input type="number" step="0.1" name="alert_rain_24h_yellow" value="{{ settings.alert_rain_24h_yellow or '50.0' }}" style="padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary);">
+                    </label>
+
+                    <label style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.25rem;">
+                        Wind Gust Red Alert (m/s)
+                        <input type="number" step="0.1" name="alert_gust_red" value="{{ settings.alert_gust_red or '25.0' }}" style="padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary);">
+                    </label>
+
+                    <label style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.25rem;">
+                        Wind Gust Yellow Alert (m/s)
+                        <input type="number" step="0.1" name="alert_gust_yellow" value="{{ settings.alert_gust_yellow or '15.0' }}" style="padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary);">
+                    </label>
+                </div>
+
+                <h4 style="margin-top: 0.75rem; color: var(--text-primary); border-bottom: 1px solid var(--border); padding-bottom: 0.4rem;">
+                    Proximity & Ingestion Controls
+                </h4>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem;">
+                    <label style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.25rem;">
+                        Warning Distance (KM)
+                        <input type="number" name="warning_distance_km" value="{{ settings.warning_distance_km or '50' }}" style="padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary);">
+                    </label>
+
+                    <label style="font-size: 0.85rem; display: flex; flex-direction: column; gap: 0.25rem;">
+                        Scheduler Interval (mins)
+                        <input type="number" name="scheduler_minutes" value="{{ settings.scheduler_minutes or '15' }}" style="padding: 0.5rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-secondary); color: var(--text-primary);">
+                    </label>
+                </div>
+
+                <div style="margin-top: 1rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
+                    <button type="submit" style="padding: 0.6rem 1.25rem; border-radius: 8px; border: none; background: #2563eb; color: #ffffff; font-weight: 600; cursor: pointer;">Save Settings</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="map-controls">
+        <button id="reset-map-button" class="reset-map-button">
+            Reset Map
+        </button>
+        
+        <button id="sidebar-toggle" class="sidebar-toggle">
+            Toggle Sidebar
+        </button>
+    </div>
+
+    <script>
+        const state_dashboard = {{ alerts | tojson }};
+        const polygon_data = {{ polygon_data | tojson }};
+        const project_sites =  {{ project_sites | tojson }};
+        const gnd_sites = {{ gnd_sites | tojson }};
+        const warning_projects = {{ projects | map(attribute="project_id") | list | tojson }};
+        const severity_colors = {{ severity_colors | tojson }};
+
+        const AUTO_REFRESH_INTERVAL_MS = 600000;
+        if (window.location.pathname === "/") {
+            setInterval(() => {
+                if (!document.hidden) { window.location.reload(); }
+            }, AUTO_REFRESH_INTERVAL_MS);
+        }
+    </script>
+
+    <script src="{{ url_for('static', filename='js/modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/projects.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/tabs.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/search.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/favicon.png') }}">
+        <link rel="stylesheet" href="{{ url_for('static', filename = 'css/main.css') }}">
+        <link rel="stylesheet" href="{{ url_for('static', filename = 'vendor/leaflet/leaflet.css') }}">
+
+        <style>
+            :root {
+                --severity-extreme: {{ settings.severity_extreme }};
+                --severity-severe: {{ settings.severity_severe }};
+                --severity-moderate: {{ settings.severity_moderate }};
+                --severity-minor: {{ settings.severity_minor }};
+            }
+        </style>
+
+        <title>{% block title %}NHPC Catchment Alert Dashboard{% endblock %}</title>
+    </head>
+
+    <body>
+        <nav class="navbar">
+            <div class="nav-left">
+                <h2><a href="/">NHPC Catchment Alert Dashboard</a></h2>
+            </div>
+
+            <div class="nav-right">
+                <button id="open-settings-btn-nav" class="theme-toggle" aria-label="Settings" title="Dashboard Settings" style="margin-right: 0.5rem;">
+                    <i data-lucide="settings"></i>
+                </button>
+
+                <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Theme" title="Toggle Theme">
+                    <i id="theme-icon" data-lucide="sun"></i>
+                </button>
+
+                <button id="menu-toggle" class="menu-toggle">
+                    <i data-lucide="menu"></i>
+                </button>
+
+                <div id="menu-dropdown" class="menu-dropdown">
+                    <a href="/">Home</a>
+                    <a href="#" id="open-settings-btn">Settings</a>
+                    <a href="/api/docs">API Documentation</a>
+                </div>
+            </div>
+        </nav>
+
+        {% block content %}
+        {% endblock %}
+
+        <script src = "{{ url_for('static', filename = 'vendor/leaflet/leaflet.js') }}"></script>
+        <script src = "{{ url_for('static', filename = 'vendor/leaflet-textpath/leaflet.textpath.js') }}"></script>
+        <script src = "{{ url_for('static', filename = 'vendor/lucide/lucide.min.js') }}"></script>
+        <script src = "{{ url_for('static', filename = 'js/map.js') }}"></script>
+        <script src = "{{ url_for('static', filename = 'js/nav.js') }}"></script>
+    </body>
+</html>

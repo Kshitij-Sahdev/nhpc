@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block title %}
+    NHPC Catchment Alert Dashboard — API Documentation
+{% endblock %}
+
+{% block content %}
+<div class="docs-container">
+
+    <div class="docs-header">
+        <h1>NHPC Catchment Alert Dashboard API Reference</h1>
+        <p>Public endpoints exposed by the NHPC Catchment & Emergency Disaster Alert Platform. All endpoints return JSON format with explicit unit specifications.</p>
+    </div>
+
+    <!-- AI SUMMARY ENDPOINT -->
+    <div class="endpoint-card" style="border: 2px solid #2563eb;">
+        <div class="endpoint-header">
+            <div class="endpoint-header-left">
+                <span class="method-badge method-get" style="background: #2563eb;">GET</span>
+                <code class="endpoint-path">/api/ai-summary</code>
+                <code class="endpoint-path">/api/v1/ai-summary</code>
+            </div>
+            <span class="endpoint-tag" style="background: #1e40af; color: white;">AI Summary (Unit-Annotated)</span>
+        </div>
+
+        <p class="endpoint-description">
+            Returns a comprehensive, highly detailed JSON summary of all 27 NHPC hydro project catchments, IMD 12km x 12km grid rainfall forecasts, active NDMA disaster alerts, and configured warning thresholds. Specifically structured for AI agent ingestion with explicit physical units and zero telemetry.
+        </p>
+
+        <div class="endpoint-section">
+            <div class="endpoint-section-title">Physical Unit Specifications</div>
+            <div class="param-table">
+                <div class="param-row">
+                    <div class="param-name"><code>rainfall</code></div>
+                    <div class="param-type">mm</div>
+                    <div class="param-desc">Precipitation amount in millimeters (3h & 24h totals).</div>
+                </div>
+                <div class="param-row">
+                    <div class="param-name"><code>wind_speed</code></div>
+                    <div class="param-type">m/s</div>
+                    <div class="param-desc">Wind gust speed in meters per second.</div>
+                </div>
+                <div class="param-row">
+                    <div class="param-name"><code>temperature</code></div>
+                    <div class="param-type">°C</div>
+                    <div class="param-desc">Minimum and maximum temperatures in degrees Celsius.</div>
+                </div>
+                <div class="param-row">
+                    <div class="param-name"><code>spatial_grid_step</code></div>
+                    <div class="param-type">12km x 12km</div>
+                    <div class="param-desc">Approximate 0.125° spatial grid resolution for IMD Mausamgram NWP model.</div>
+                </div>
+                <div class="param-row">
+                    <div class="param-name"><code>distance</code></div>
+                    <div class="param-type">km</div>
+                    <div class="param-desc">Distance from NDMA alert polygon in kilometers.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="endpoint-section">
+            <div class="endpoint-section-title">Sample Response</div>
+            <pre class="code-block">{
+  "timestamp": "2026-08-08T16:20:00+00:00",
+  "system_metadata": {
+    "application": "NHPC GeoAlert & IMD Catchment Warning Platform",
+    "version": "2.0.0",
+    "telemetry_enabled": false,
+    "unit_specifications": {
+      "rainfall": "mm (millimeters)",
+      "wind_speed": "m/s (meters per second)",
+      "temperature": "°C (degrees Celsius)",
+      "distance": "km (kilometers)",
+      "spatial_grid_step": "12km x 12km (0.125 degrees)"
+    }
+  },
+  "summary": {
+    "overall_status": "CRITICAL",
+    "total_projects": 27,
+    "projects_at_risk": 2,
+    "red_alert_projects": 1,
+    "yellow_alert_projects": 1
+  },
+  "configured_thresholds": {
+    "rain_3h_red_mm": 30.0,
+    "rain_3h_yellow_mm": 15.0,
+    "rain_24h_red_mm": 100.0,
+    "rain_24h_yellow_mm": 50.0,
+    "wind_gust_red_m_s": 25.0,
+    "wind_gust_yellow_m_s": 15.0
+  },
+  "projects": [
+    {
+      "project_id": 101,
+      "project_name": "Tanakpur HEP",
+      "coordinates": { "latitude": 29.07, "longitude": 80.11 },
+      "status": "RED",
+      "catchment_grid_summary": {
+        "total_12km_grid_boxes": 14,
+        "catchment_status": "RED",
+        "max_predicted_rain_3h_mm": 35.4,
+        "max_predicted_rain_24h_mm": 112.5,
+        "max_predicted_gust_m_s": 18.2,
+        "active_grid_warnings_count": 2,
+        "grid_warnings": [
+          {
+            "latitude": 29.125,
+            "longitude": 80.125,
+            "rain_3h_mm": 35.4,
+            "rain_24h_mm": 112.5,
+            "gust_m_s": 18.2,
+            "alert_level": "RED",
+            "condition": "Heavy Rain"
+          }
+        ]
+      },
+      "ndma_disaster_alerts": {
+        "active_alerts_count": 1,
+        "alerts": [
+          {
+            "alert_id": 12,
+            "event": "Thunderstorm with Lightning",
+            "severity": "Severe",
+            "urgency": "Immediate",
+            "warning_type": "INSIDE_ALERT_POLYGON",
+            "distance_km": 0.0,
+            "created_at": "2026-08-08 14:00:00"
+          }
+        ]
+      }
+    }
+  ]
+}</pre>
+        </div>
+    </div>
+
+    <!-- ALL WARNINGS ENDPOINT -->
+    <div class="endpoint-card">
+        <div class="endpoint-header">
+            <div class="endpoint-header-left">
+                <span class="method-badge method-get">GET</span>
+                <code class="endpoint-path">/api/warnings</code>
+            </div>
+            <span class="endpoint-tag">Warnings</span>
+        </div>
+
+        <p class="endpoint-description">
+            Returns all active proximity warnings generated by the system, grouped by project site.
+        </p>
+
+        <div class="endpoint-section">
+            <div class="endpoint-section-title">Response Codes</div>
+            <div class="response-codes">
+                <div class="response-code">
+                    <span class="status-badge status-200">200</span>
+                    <span>Returns array of project warnings.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PROJECT BY ID ENDPOINT -->
+    <div class="endpoint-card">
+        <div class="endpoint-header">
+            <div class="endpoint-header-left">
+                <span class="method-badge method-get">GET</span>
+                <code class="endpoint-path">/api/project/&lt;project_id&gt;</code>
+            </div>
+            <span class="endpoint-tag">Project</span>
+        </div>
+
+        <p class="endpoint-description">
+            Returns metadata and active warnings for a specific project site by numeric project ID.
+        </p>
+    </div>
+
+    <!-- SINGLE ALERT ENDPOINT -->
+    <div class="endpoint-card">
+        <div class="endpoint-header">
+            <div class="endpoint-header-left">
+                <span class="method-badge method-get">GET</span>
+                <code class="endpoint-path">/api/alert/&lt;alert_id&gt;</code>
+            </div>
+            <span class="endpoint-tag">Alert</span>
+        </div>
+
+        <p class="endpoint-description">
+            Returns metadata for a single alert identified by its alert ID.
+        </p>
+    </div>
+</div>
+{% endblock %}
