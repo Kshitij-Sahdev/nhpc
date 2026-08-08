@@ -24,9 +24,11 @@ services:
       dockerfile: Dockerfile
     container_name: ndma-dashboard
     restart: always
-    command: gunicorn --bind 0.0.0.0:5000 --workers 1 --threads 4 --timeout 120 run:app
+    expose:
+      - "8000"
+    command: gunicorn --bind 0.0.0.0:8000 --workers 1 --threads 4 --timeout 120 run:app
     ports:
-      - "5000:5000"
+      - "8000:8000"
     volumes:
       - ./logs:/app/logs
     env_file:
@@ -35,7 +37,7 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
       timeout: 5s
       retries: 3
